@@ -30,7 +30,7 @@ function requireWorkerBaseUrl(env) {
     + 'backend: arXiv, OpenAlex, Scopus, AI explanations, citations, related papers, public '
     + 'lists and notifications all read it.\n'
     + 'Set it in .env.local for a local build, or as the GitHub Actions repository variable '
-    + 'for a deploy (see docs/DEVELOPMENT.md).',
+    + 'for a deploy (see .env.example).',
   )
 }
 

@@ -68,7 +68,7 @@ ceiling with `/sources/s2` because both spend the same provider allowance; the b
 per-tab limiter counted per caller, so N tabs were N times the limit.
 
 `/share/*` answers HTML, not JSON: the page a crawler reads for a shared link
-(`worker/share-pages.js`, and `docs/PUBLIC_DISCOVERY.md` for the whole flow). `vercel.json`
+(`worker/share-pages.js`). `vercel.json`
 rewrites crawler user agents from `/public/{paper,list,user,entity}/…` here, so the routes are
 public, GET and HEAD only, and need no `Origin`: they sit ahead of every Origin gate. Each answers
 the deployed shell (`https://papertok.app/index.html`, kept five minutes) with the page's own

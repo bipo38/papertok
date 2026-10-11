@@ -1,51 +1,45 @@
-# Cloudflare Worker Guide
+# Worker decisions
 
-This file applies to `worker/` and the Worker configuration in `wrangler.toml`.
+## Trust boundaries
 
-## Responsibilities
+- Browser-safe normalization can be shared with the frontend; secret-dependent requests,
+  authorization, quotas and delivery stay server-side. Do not import browser-only modules
+  into the Worker to reuse one helper.
+- Validate origins, methods, payload size, identifiers and remote URLs before fetching.
+  A crawler share route may legitimately have no Origin; that exception does not make a
+  protected route public. CORS does not authenticate a request.
+- Require verified Firebase identity for protected user-specific AI and notification routes.
+  Derive the notification email and other sensitive identity fields from verified claims,
+  not from request JSON. Fail closed for invalid credentials and degrade for provider downtime.
 
-The Worker protects secrets, applies quotas, validates requests, caches provider responses,
-proxies APIs that are unsuitable for direct browser access, generates AI explanations, and
-sends notification digests.
+## Caches, quotas and delivery
 
-Keep browser-safe normalization in `src/` when it is shared by frontend and Worker code.
-Keep secret-dependent behavior in `worker/`.
+- Cache keys describe the normalized, clamped and filtered parameters actually sent to the
+  provider, plus output-affecting provider, model, prompt version, level, language and
+  normalized paper identity where applicable.
+  Raw request variations must not create new quota spend for the same upstream request.
+- Include user identity in personal caches or avoid caching those responses globally.
+  Cache an outage-driven fallback briefly rather than giving it the healthy result's TTL;
+  recovery must not wait behind a long-lived degraded answer.
+- Respect Retry-After and the total request deadline. Bound fan-out and retries across the
+  whole operation, not only each fetch. Missing provider data must not become fabricated data.
+- Shared and paid-provider quotas use the existing atomic ledger. Keep hard budget caps and
+  reserve before spending; one process's counter or KV read-then-write is not an atomic limit.
+- Digest delivery must remain idempotent and deduplicate papers by stable identity. Preserve
+  unsubscribe state and resumable progress; retries must not resend successful deliveries.
 
-## Security
+## Contracts and AI
 
-- Secrets must be Cloudflare secrets, never literals in source, `wrangler.toml`, or frontend
-  environment variables.
-- Validate origins, methods, payload size, identifiers, and remote URLs before fetching.
-- Require and verify Firebase identity for user-specific AI and notification routes.
-- Derive sensitive user fields, such as notification email, from verified identity rather
-  than trusting request JSON.
-- Fail closed for invalid credentials and fail gracefully for provider downtime.
-
-## Caching and Quotas
-
-- Include every output-affecting input in cache keys: language, model, prompt version, level,
-  provider, and normalized paper identity where applicable.
-- Do not cache personal responses under globally reusable keys.
-- Respect provider `Retry-After` and avoid retry storms.
-- Keep AI and email limits explicit. Paid fallback providers must retain hard budget caps.
-- Scheduled email delivery must remain idempotent and deduplicate papers by stable identity.
-
-## Route Changes
-
-When adding or changing a route:
-
-1. Add method and CORS handling.
-2. Validate and normalize input.
-3. Map provider errors to stable PaperTok error codes.
-4. Add focused Worker tests.
-5. Update `worker/README.md`, `.env.example` when relevant, and `docs/ARCHITECTURE.md`.
-6. Verify both local tests and `npx wrangler deploy --dry-run` or a real authorized deploy.
-
-## AI Output
-
-- Gemini and Kimi must share the same output contract.
-- PaperTok is English-only: prompts, schemas, system instructions, and generated copy are
-  English. Accept and ignore a legacy `language: 'es'` input rather than rejecting it.
-- Never claim full-text access when only an abstract was supplied.
-- Preserve LaTeX delimiters and return structured JSON only.
-
+- All active AI providers implement the same response contract. Switching providers must not
+  change the browser's parser or bypass budget enforcement. Inspect configured providers
+  rather than assuming an old provider list is still current.
+- Prompts, structured output, emails and generated copy are English. Accept and ignore legacy
+  `language: 'es'` input rather than rejecting old clients.
+- State the available evidence honestly: an abstract is not full text. Preserve LaTeX
+  delimiters and the endpoint's structured JSON or streaming contract; do not flatten a
+  stream or add prose outside JSON to accommodate a provider.
+- A route change includes method and CORS handling, normalized input, stable error mapping,
+  focused behavior tests and compatible callers. Update its public contract and environment
+  documentation when those change, then verify the Worker dry-run as well as frontend callers.
+- Worker dry-run proves packaging, not production secrets, origin configuration, live quota
+  behavior or delivery. Mark those separately in verification evidence.

@@ -30,3 +30,12 @@ video/out/
 
 .superpowers/
 emergent-ventures/
+
+# Local investigations, audits and task reports must not enter commits.
+/.local/
+/docs/AUDITORIA-*.md
+/docs/VERIFICATION-*.md
+/docs/LATENCIA-*.md
+/docs/FUENTES-FEED-*.md
+/docs/plan/
+/docs/superpowers/
