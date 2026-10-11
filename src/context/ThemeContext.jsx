@@ -9,6 +9,7 @@ import {
 import { ThemeContext } from './contexts';
 import {
   applyTheme,
+  clearStoredTheme,
   persistTheme,
   readStoredTheme,
   systemPrefersDark,
@@ -28,10 +29,10 @@ import { runThemeSwitch } from '../utils/themeTransition';
  *
  * Until the reader chooses, the system decides and keeps deciding: with nothing
  * stored, a machine that switches to dark at sunset switches the app with it.
- * Pressing the toggle ends that — a choice is a choice — and the only way back
- * to following the system is clearing the site's storage. A three-way control
- * (light / auto / dark) is the follow-up that would fix it, and it belongs in
- * Settings, not in the bar.
+ * Pressing the toggle ends that — a choice is a choice. The way back is the
+ * three-way control in the account menu (light / dark / system):
+ * `setPreference('system')` forgets the stored choice, and the system decides
+ * again, live.
  */
 export function ThemeProvider({ children }) {
   const [chosen, setChosen] = useState(readStoredTheme);
@@ -66,12 +67,25 @@ export function ThemeProvider({ children }) {
     });
   }, [theme]);
 
+  /** 'light' | 'dark' | 'system': the three-way choice. */
+  const setPreference = useCallback((next) => {
+    const target = next === 'system' ? (systemDark ? 'dark' : 'light') : next;
+    runThemeSwitch(() => {
+      applyTheme(target);
+      if (next === 'system') clearStoredTheme();
+      else persistTheme(next);
+      setChosen(next === 'system' ? null : next);
+    });
+  }, [systemDark]);
+
   const value = useMemo(() => ({
     theme,
     isDark: theme === 'dark',
     followsSystem: chosen === null,
+    preference: chosen ?? 'system',
     toggleTheme,
-  }), [theme, chosen, toggleTheme]);
+    setPreference,
+  }), [theme, chosen, toggleTheme, setPreference]);
 
   return (
     <ThemeContext.Provider value={value}>

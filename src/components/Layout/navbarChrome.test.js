@@ -14,8 +14,8 @@ import { readFile } from 'node:fs/promises';
 const navbarJsx = readFile(new URL('./Navbar.jsx', import.meta.url), 'utf8');
 const navbarCss = readFile(new URL('./Navbar.css', import.meta.url), 'utf8');
 const reportJsx = readFile(new URL('../Report/ScientificReport.jsx', import.meta.url), 'utf8');
-const prefsJsx = readFile(new URL('./NavPreferencesMenu.jsx', import.meta.url), 'utf8');
-const prefsCss = readFile(new URL('./NavPreferencesMenu.css', import.meta.url), 'utf8');
+const accountJsx = readFile(new URL('./AccountMenu.jsx', import.meta.url), 'utf8');
+const accountCss = readFile(new URL('./AccountMenu.css', import.meta.url), 'utf8');
 
 test('la navbar no dibuja el botón de recargar ni escucha al informe', async () => {
   const jsx = await navbarJsx;
@@ -38,78 +38,38 @@ test('el spinner de la navbar se fue con su botón', async () => {
   assert.ok(!css.includes('@keyframes spin'), 'el keyframes spin ya no tiene consumidor en Navbar.css');
 });
 
-test('la navbar monta el menú de preferencias en vez del toggle suelto', async () => {
+test('the navbar opens the account menu from the avatar, with no separate preferences button', async () => {
   const jsx = await navbarJsx;
-  assert.ok(jsx.includes('NavPreferencesMenu'), 'la navbar no importa NavPreferencesMenu');
+  assert.match(jsx, /import AccountMenu from '\.\/AccountMenu\.jsx';/);
+  assert.match(jsx, /<AccountMenu \/>/);
+  assert.ok(!jsx.includes('NavPreferencesMenu'), 'the preferences button came back beside the avatar');
   assert.ok(!jsx.includes('<ThemeToggle'), 'el ThemeToggle suelto sigue en la navbar');
 });
 
-test('the menu gathers the theme and the settings link, with no language row', async () => {
-  const jsx = await prefsJsx;
-  assert.match(jsx, /toggleTheme\(/, 'falta el tema');
-  assert.doesNotMatch(jsx, /setLanguage|ToggleGroup/, 'the interface is English-only: no language row');
-  assert.match(jsx, /navigate\('\/settings'\)/, 'falta el enlace a ajustes');
+
+test('the account menu gathers the account, the three-way theme and sign-out', async () => {
+  const jsx = await accountJsx;
+  assert.match(jsx, /from '@base-ui\/react\/menu'/);
+  assert.match(jsx, /<Link to="\/profile" \/>/);
+  assert.match(jsx, /<Link to="\/lists" \/>/);
+  assert.match(jsx, /<Link to="\/settings" \/>/);
+  assert.doesNotMatch(jsx, /to="\/settings\//, 'settings is one entry; its pages are inside it');
+  assert.match(jsx, /<Menu\.RadioGroup[\s\S]*?value=\{preference\}[\s\S]*?onValueChange=\{setPreference\}/);
+  for (const id of ['light', 'dark', 'system']) assert.match(jsx, new RegExp(`id: '${id}'`));
+  assert.match(jsx, /closeOnClick=\{false\}/, 'choosing a theme keeps the menu open');
+  assert.match(jsx, /onClick=\{handleSignOut\}/);
+  assert.doesNotMatch(jsx, /aria-expanded=/, 'Base UI writes aria-expanded on the trigger');
 });
 
-/**
- * El disclosure anuncia su estado a través del trigger: Base UI escribe
- * `aria-expanded` y `data-popup-open` en el botón que renderiza
- * `PopoverTrigger`, así que la promesa vive en usar ese trigger, no en un
- * atributo escrito a mano que podría quedarse desincronizado del panel.
- */
-test('el trigger es un PopoverTrigger de Base UI y el panel conserva role="group"', async () => {
-  const jsx = await prefsJsx;
-  const css = await prefsCss;
-  assert.match(jsx, /from '\.\.\/ui\/popover\.jsx'/, 'el menú no usa el Popover de ui/');
-  assert.match(jsx, /<PopoverTrigger\s+render=\{<button type="button" className="navbar-icon-btn nav-prefs-trigger" \/>\}/,
-    'el trigger debe seguir siendo el botón de utilidades de la barra');
-  assert.match(jsx, /<PopoverContent[\s\S]*?role="group"[\s\S]*?aria-label=\{label\}/,
-    'el contenido son toggles con estado: role="group" con nombre, no un menu ARIA');
-  assert.match(css, /\.nav-prefs-trigger\[data-popup-open\]/, 'el aspecto abierto del trigger se lee del estado que escribe Base UI');
-  assert.doesNotMatch(jsx, /aria-expanded=/, 'aria-expanded lo escribe Base UI; a mano se desincroniza');
-  assert.doesNotMatch(jsx, /addEventListener\('pointerdown'|addEventListener\('keydown'/,
-    'cerrar al pulsar fuera y con Escape es del Popover, no del componente');
-});
-
-test('el popover lo posiciona Base UI y anima solo con CSS', async () => {
-  const css = await prefsCss;
-  const jsx = await prefsJsx;
-  const rule = css.match(/\.nav-prefs-menu\s*\{([^}]*)\}/);
-  assert.ok(rule, 'falta la regla .nav-prefs-menu');
-  assert.doesNotMatch(rule[1], /position:\s*absolute/, 'el Positioner ancla el panel; una posición propia lo sacaría del sitio');
-  assert.match(jsx, /align="end"/, 'a la derecha el panel se pega al borde del propio botón');
-  assert.match(css, /prefers-reduced-motion/, 'el popover debe respetar reduced motion');
-  assert.doesNotMatch(jsx, /framer-motion/, 'nada de framer en el cromo');
-});
-
-/**
- * La salida sigue existiendo: antes era `is-closing` + un temporizador que
- * esperaba a `navPrefsOut`; ahora Base UI marca `data-ending-style` y espera a
- * que la transición termine antes de desmontar. Sin regla para ese estado el
- * panel desaparecería de golpe, y con reduced motion no debe transicionar.
- */
-test('el popover anima la salida, no solo la entrada', async () => {
-  const css = await prefsCss;
-  const jsx = await prefsJsx;
-  assert.match(css, /\.nav-prefs-menu\[data-starting-style\]\s*\{[^}]*opacity:\s*0/, 'la entrada no parte de opacity 0');
-  assert.match(css, /\.nav-prefs-menu\[data-ending-style\]\s*\{[^}]*opacity:\s*0/, 'la salida no tiene regla');
+test('the account menu animates in and out with CSS, and keeps its items focusable', async () => {
+  const css = await accountCss;
+  assert.match(css, /\.account-menu\[data-starting-style\],\s*\.account-menu\[data-ending-style\]\s*\{[^}]*opacity:\s*0/);
   const reduced = css.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/);
   assert.ok(reduced, 'falta el bloque de reduced motion');
-  assert.match(reduced[1], /\.nav-prefs-menu\[data-ending-style\]/, 'la salida también se apaga con reduced motion');
-  for (const resto of ['setClosing', 'MENU_EXIT_MS', 'is-closing', 'useReducedMotion']) {
-    assert.ok(!jsx.includes(resto), `\`${resto}\` sigue en NavPreferencesMenu.jsx: la salida la espera Base UI`);
-  }
-  assert.ok(!css.includes('navPrefsOut') && !css.includes('is-closing'), 'la salida a mano sigue en el CSS');
-});
-
-/**
- * The theme is the ui/ `Toggle`: a single on/off, with `aria-pressed` written
- * by Base UI.
- */
-test('the theme row is the ui/ Toggle', async () => {
-  const jsx = await prefsJsx;
-  assert.match(jsx, /<Toggle[\s\S]*?pressed=\{isDark\}[\s\S]*?onPressedChange=\{\(\) => toggleTheme\(themeRowRef\.current\)\}/);
-  assert.doesNotMatch(jsx, /aria-pressed=/, 'aria-pressed lo escriben los toggles');
+  assert.match(reduced[1], /\.account-menu-theme-pill/);
+  // Only the container turns its outline off; rows keep the global ring.
+  const item = css.match(/\.account-menu-item\s*\{([^}]*)\}/);
+  assert.ok(item && !/outline:\s*none/.test(item[1]), 'menu rows must keep the focus ring');
 });
 
 test('el interruptor de tema del header invitado es el Toggle de ui/', async () => {

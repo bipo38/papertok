@@ -48,6 +48,15 @@ export function persistTheme(theme) {
   }
 }
 
+/** Forgets the choice: from now on the system decides again. */
+export function clearStoredTheme() {
+  try {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    // Nothing stored, or storage unavailable: either way the system decides.
+  }
+}
+
 /**
  * Paints the choice. The `theme-color` meta rides along so the browser chrome
  * on a phone — the address bar, the notch strip in standalone mode — is the

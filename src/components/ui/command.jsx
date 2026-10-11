@@ -95,7 +95,7 @@ function CommandDialog({ children, className, overlayClassName, finalFocus, titl
 function CommandInput({ className, wrapperClassName, wrapperStyle, children, ...props }) {
   return (
     <div
-      className={cn('flex items-center gap-1.5 border-b border-border px-4 py-2', wrapperClassName)}
+      className={cn('flex items-center gap-1.5 border-b border-border px-4 pt-3 pb-1.5', wrapperClassName)}
       style={wrapperStyle}
     >
       <MagnifyingGlass size={16} className="shrink-0 text-muted-foreground" />
@@ -105,7 +105,7 @@ function CommandInput({ className, wrapperClassName, wrapperStyle, children, ...
           // field's font is under 16px, and this field opens autoFocused —
           // the palette zoomed the whole app on every open (a real iPhone,
           // 2026-08-29). Same rule as the reader's note textarea.
-          'flex h-12 w-full border-0 bg-transparent px-2 py-3 text-[1rem] shadow-none outline-none',
+          'flex h-9 w-full border-0 bg-transparent px-2 py-1.5 text-[1rem] shadow-none outline-none',
           'placeholder:text-[var(--text-tertiary)]',
           className,
         )}
@@ -165,24 +165,28 @@ function CommandGroup({ className, ...props }) {
  * The tint stays because it makes the row read as one object, but the thing
  * you actually see is the rule.
  *
- * The rule replaced a full 2px ring around the row: with the search field's
- * own focus box directly above it, the palette drew two boxes at once and the
- * "you are here" read as noise (user feedback, 2026-08-29). A 3px inset bar
- * down the row's left edge — the app's ruled-row vocabulary — is one mark,
- * not a second box. Drawn as an inset shadow, not a border, so the row's box
- * never changes size and its neighbours never shift; drawn in
- * `var(--focus-ring)` because that is the one token whose job is "you are
- * here" and whose value stays above 3:1 on every surface in both themes
- * (contrast.test.js measures it). cmdk keeps DOM focus on the field and moves
- * rows via `aria-activedescendant`, so no real focus ring is being hidden.
+ * The mark has changed twice. A full 2px ring around the row went because,
+ * with the search field's own focus box directly above it, two boxes read as
+ * noise (user feedback, 2026-08-29); the 3px inset bar down the left edge
+ * that replaced it went because a reader asked for no edge at all on the
+ * selected row (2026-10-10). What marks it now is an "↵" at the row's end —
+ * the palette's own "Enter opens this" — in `var(--focus-ring)`, the token
+ * whose job is "you are here" and whose value stays above 3:1 on every
+ * surface in both themes (contrast.test.js measures it). A stronger tint and
+ * semibold text make the row read as one object; neither is the indicator.
+ * The "↵" carries empty alt text (`content: '↵' / ''`), so it is seen but
+ * never read into the option's name.
+ * Rows are square: nothing on them is rounded any more. cmdk keeps DOM focus
+ * on the field and moves rows via `aria-activedescendant`, so no real focus
+ * ring is being hidden.
  */
 function CommandItem({ className, ...props }) {
   return (
     <CommandPrimitive.Item
       className={cn(
-        'relative flex cursor-pointer select-none items-center gap-3 rounded-md px-2 py-2 text-sm',
-        'data-[selected=true]:bg-secondary',
-        'data-[selected=true]:shadow-[inset_3px_0_0_var(--focus-ring)]',
+        'relative flex cursor-pointer select-none items-center gap-3 px-2 py-2 text-sm',
+        'data-[selected=true]:bg-[color-mix(in_srgb,var(--text-primary)_10%,var(--bg-card))] data-[selected=true]:font-semibold',
+        "data-[selected=true]:after:ms-auto data-[selected=true]:after:shrink-0 data-[selected=true]:after:ps-2 data-[selected=true]:after:text-[0.8125rem] data-[selected=true]:after:text-[var(--focus-ring)] data-[selected=true]:after:content-['↵'_/_'']",
         'data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50',
         className,
       )}

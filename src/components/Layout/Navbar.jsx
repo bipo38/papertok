@@ -4,7 +4,7 @@ import { ruleTransform } from '../../utils/navRule.js';
 import { useAuth } from '../../context/AuthContext';
 import { useFeed } from '../../context/FeedContext';
 import { MagnifyingGlass, Newspaper, Stack, UserCheck } from '@phosphor-icons/react';
-import NavPreferencesMenu from './NavPreferencesMenu';
+import AccountMenu from './AccountMenu.jsx';
 import { shouldOpenSearchOnSlash } from './searchShortcut.js';
 import './Navbar.css';
 
@@ -67,7 +67,7 @@ function useActiveTabRule(rowRef, tab, activeKey) {
 let navbarHasArrived = false;
 
 export default function Navbar({ onOpenSearch = () => {}, searchOpen = false }) {
-  const { user, profilePhoto } = useAuth();
+  const { user } = useAuth();
   const [arriving, setArriving] = useState(() => !navbarHasArrived);
   const handleArrived = (event) => {
     // Children animate too (the preferences sheet, the search state); only
@@ -291,45 +291,10 @@ export default function Navbar({ onOpenSearch = () => {}, searchOpen = false }) 
             <MagnifyingGlass size={17} />
           </button>
 
-          {/* Regla 6: las utilidades se agrupan a la derecha tras la regla de
-              1px. Tema e idioma viven plegados tras el botón de preferencias:
-              cambian cómo se ve la aplicación, no lo que está mostrando. */}
-          <NavPreferencesMenu />
 
           {user && (
             <div className="navbar-profile">
-              {/* Straight to the profile, TikTok-style: no menu in between.
-                  Settings and sign-out live behind the gear on that page, and
-                  My lists behind the profile's own Lists tab, so the menu this
-                  replaces costs nothing. The navigation is synchronous on
-                  purpose — <Routes> sits inside an AnimatePresence with
-                  mode="wait", and a navigate() from an async continuation can
-                  leave it stalled. */}
-              <button
-                className={`navbar-avatar-btn ${pathname === '/profile' ? 'active' : ''}`}
-                aria-label={'My profile'}
-                title={'My profile'}
-                onClick={() => navigate('/profile')}
-              >
-                {profilePhoto || user.photoURL ? (
-                  <img
-                    src={profilePhoto || user.photoURL}
-                    alt="Profile"
-                    className="navbar-avatar"
-                    referrerPolicy="no-referrer"
-                    // Always visible above the fold on every route -- lazy
-                    // loading would only delay it for no benefit. `.navbar-avatar`
-                    // renders at 26x26.
-                    decoding="async"
-                    width="26"
-                    height="26"
-                  />
-                ) : (
-                  <div className="navbar-avatar navbar-avatar--fallback">
-                    {user.email?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                )}
-              </button>
+              <AccountMenu />
             </div>
           )}
         </div>
