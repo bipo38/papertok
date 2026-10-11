@@ -115,7 +115,7 @@ function DigestPreview({ still, subscribed }) {
         {/* Turning the digest on readdresses the envelope: the two lines
             share a cell and cross-fade, so a quick on-off-on retargets. */}
         <span className="gw-env-label" data-subscribed={subscribed ? '' : undefined}>
-          <span>PaperTok digest · Today</span>
+          <span>PaperTok Weekly · Monday</span>
           <span><Check size={11} weight="bold"/>On its way to you</span>
         </span>
       </div>
@@ -151,7 +151,7 @@ export function WelcomeInboxChoice({ subscribed, onChange }) {
     <DigestPreview still={still} subscribed={subscribed}/>
     <label className="gw-digest-optin" data-checked={subscribed ? '' : undefined}>
       <span className="gw-digest-optin-text">
-        <strong id="gw-digest-optin-title">Email me the daily digest</strong>
+        <strong id="gw-digest-optin-title">Email me the weekly digest</strong>
         <span id="gw-digest-optin-desc">Starts with your first follow. Unsubscribe anytime.</span>
       </span>
       <Switch

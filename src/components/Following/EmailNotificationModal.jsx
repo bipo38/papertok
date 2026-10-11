@@ -13,7 +13,6 @@ import { useEmailNotifications } from '../../context/EmailNotificationsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog.jsx';
 import { Label } from '../ui/label.jsx';
-import { RadioGroup, RadioGroupItem } from '../ui/radio-group.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select.jsx';
 import { Switch } from '../ui/switch.jsx';
 import './EmailNotificationModal.css';
@@ -145,7 +144,7 @@ export default function EmailNotificationModal({ isOpen, onClose }) {
           <div className="email-notification-icon"><Envelope size={20} aria-hidden="true" /></div>
           <div>
             <DialogTitle>{'Email updates'}</DialogTitle>
-            <DialogDescription>{'Receive a compact digest even when PaperTok is closed.'}</DialogDescription>
+            <DialogDescription>{'Receive a weekly digest even when PaperTok is closed.'}</DialogDescription>
           </div>
         </header>
 
@@ -195,24 +194,6 @@ export default function EmailNotificationModal({ isOpen, onClose }) {
           </div>
 
           <div className={`email-notification-options ${draft.enabled ? '' : 'is-disabled'}`}>
-            <fieldset disabled={optionsDisabled}>
-              <legend>{'Frequency'}</legend>
-              <RadioGroup
-                className="email-notification-segments"
-                aria-label={'Frequency'}
-                value={draft.frequency}
-                onValueChange={frequency => setDraft(current => ({ ...current, frequency }))}
-                disabled={optionsDisabled}
-              >
-                <RadioGroupItem value="daily" render={<button type="button" />} nativeButton>
-                  {'Daily'}
-                </RadioGroupItem>
-                <RadioGroupItem value="weekly" render={<button type="button" />} nativeButton>
-                  {'Weekly'}
-                </RadioGroupItem>
-              </RadioGroup>
-            </fieldset>
-
             <div className="email-notification-count">
               <Label htmlFor={countId}>
                 <strong>{'Maximum per email'}</strong>
@@ -238,11 +219,7 @@ export default function EmailNotificationModal({ isOpen, onClose }) {
 
           <div className="email-notification-schedule">
             <Clock size={16} aria-hidden="true" />
-            <span>
-              {draft.frequency === 'weekly'
-                ? ('Monday mornings')
-                : ('Every morning')}, {'only when there are updates.'}
-            </span>
+            <span>{'Every Monday morning, only when there are updates.'}</span>
           </div>
 
           {feedback && (

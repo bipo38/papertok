@@ -223,7 +223,7 @@ function emailStatus(preferences, health, loading) {
   }
   return {
     label: 'On',
-    description: `${preferences.frequency === 'weekly' ? 'Every Monday' : 'Every morning'} · up to ${preferences.maxPapers || 5} papers`,
+    description: `Every Monday · up to ${preferences.maxPapers || 5} papers`,
     tone: 'success',
   };
 }

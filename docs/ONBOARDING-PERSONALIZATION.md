@@ -25,7 +25,7 @@ per-paper level control remains available. Existing onboarded accounts discard
 waiting guest data as before.
 
 Email is opt-in. The Inbox screen offers one switch, off by default: "Email me
-the daily digest". A yes travels in the guest bridge as `emailDigest: true`
+the weekly digest". A yes travels in the guest bridge as `emailDigest: true`
 (anything else reads as no) and does not collect an address: the welcome never
 asks for one. Account onboarding saves it as `users/{uid}.emailDigestOptIn: true`
 (allowed by `firestore.rules` as a bool) in a write of its own, after the

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { CATEGORIES } from '../src/data/categoryTaxonomy.js';
 import { dribblingFetch, settleWithin, withStubbedFetch } from '../src/test-support/deadlineHarness.js';
 import {
   emailNotificationInternals,
@@ -34,6 +36,7 @@ const {
   resendSendErrorCode,
   renderScientificHtml,
   renderDigest,
+  fieldInks,
   digestFollowsForWindow,
   providerOutcomeDefinitelyRejected,
   deliveryLedgerPrefix,
@@ -166,12 +169,15 @@ async function storedSubscriptionWithState(kv, subscriptionKey) {
 }
 
 test('sanitizes notification preferences and followed entities', () => {
-  assert.deepEqual(sanitizePreferences({ enabled: true, frequency: 'weekly', maxPapers: 10 }), {
+  // The digest is weekly for everyone: a client that still asks for daily
+  // emails is stored as weekly.
+  assert.deepEqual(sanitizePreferences({ enabled: true, frequency: 'daily', maxPapers: 10 }), {
     enabled: true,
     frequency: 'weekly',
     maxPapers: 10,
     language: 'en',
   });
+  assert.equal(sanitizePreferences({ enabled: true }).frequency, 'weekly');
   assert.equal(sanitizePreferences({ language: 'en' }).language, 'en');
   // A legacy Spanish preference from an old client is stored as English.
   assert.equal(sanitizePreferences({ language: 'es' }).language, 'en');
@@ -278,6 +284,104 @@ test('relevance-filters query-topic OpenAlex results before attaching a match', 
     assert.equal(papers[0].matches[0].canonicalId, 'query-1234abcd');
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+function invertedIndex(text) {
+  const index = {};
+  text.split(' ').forEach((word, position) => {
+    (index[word] ||= []).push(position);
+  });
+  return index;
+}
+
+test('an OpenAlex work carries its field and a usable abstract into the digest', async () => {
+  const abstract = 'Sparse models train faster with learned optimisers than with hand-tuned schedules.';
+  const restore = stubFetch(jsonResponse(200, {
+    results: [
+      {
+        id: 'https://openalex.org/WFIELD',
+        type: 'article',
+        display_name: 'Learned optimisers for sparse models',
+        publication_date: '2026-08-01',
+        authorships: [{ author: { display_name: 'Ada Lovelace' } }],
+        primary_location: { landing_page_url: 'https://example.com/field' },
+        primary_topic: {
+          display_name: 'Stochastic Gradient Optimization Techniques',
+          field: { id: 'https://openalex.org/fields/17', display_name: 'Computer Science' },
+        },
+        abstract_inverted_index: invertedIndex(abstract),
+      },
+      {
+        // Chemistry (field 16) has no ink of its own; the topic's name does.
+        // And an editorial's inverted index is its body, not an abstract.
+        id: 'https://openalex.org/WNAMED',
+        type: 'editorial',
+        display_name: 'Polymer membranes for water',
+        publication_date: '2026-08-01',
+        authorships: [{ author: { display_name: 'Grace Hopper' } }],
+        primary_location: { landing_page_url: 'https://example.com/named' },
+        primary_topic: {
+          display_name: 'Polymer Membranes for Desalination',
+          field: { id: 'https://openalex.org/fields/16', display_name: 'Chemistry' },
+        },
+        abstract_inverted_index: invertedIndex(abstract),
+      },
+    ],
+  }));
+
+  try {
+    const papers = await fetchOpenAlexUpdates(digestFollow(), {}, Date.parse('2026-08-03T07:00:00Z'));
+    const byId = Object.fromEntries(papers.map(paper => [paper.id, paper]));
+    assert.equal(byId.WFIELD.area, 'cs');
+    assert.equal(byId.WFIELD.abstract, abstract);
+    assert.equal(byId.WNAMED.area, 'chemeng');
+    assert.equal('abstract' in byId.WNAMED, false);
+  } finally {
+    restore();
+  }
+});
+
+test('the app may name a paper\'s field, but only one the digest knows', async () => {
+  const kv = createMemoryKv();
+  const request = new Request('https://example.com/notifications/preferences', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      enabled: true,
+      follows: [digestFollow()],
+      previewItems: [
+        { id: 'known', title: 'Known field', area: 'bio' },
+        { id: 'unknown', title: 'Unknown field', area: 'astrology' },
+        { id: 'injected', title: 'Injected field', area: '<b>bio</b>' },
+      ],
+    }),
+  });
+
+  await saveSubscription(request, { NOTIFICATION_STORE: kv }, {
+    uid: 'field-reader',
+    email: 'reader@example.com',
+    displayName: 'Reader',
+  });
+
+  const stored = await kv.get('notification:subscription:field-reader', 'json');
+  assert.deepEqual(stored.previewItems.map(paper => paper.area), ['bio', undefined, undefined]);
+});
+
+test('merging two records of one paper keeps the field and the longer abstract', () => {
+  const fresh = {
+    id: 'W1',
+    title: 'Paper',
+    abstract: 'The abstract the source returned for this paper.',
+    area: 'cs',
+    matches: [],
+  };
+  // arXiv's summary and OpenAlex's rebuilt index rarely agree on length.
+  const preview = { id: 'W1', title: 'Paper', abstract: 'A shorter abstract.', matches: [] };
+  for (const order of [[fresh, preview], [preview, fresh]]) {
+    const [merged] = mergePapers(order);
+    assert.equal(merged.abstract, fresh.abstract);
+    assert.equal(merged.area, 'cs');
   }
 });
 
@@ -421,18 +525,25 @@ test('uses at most one strong exploration paper when followed selection is empty
   }
 });
 
-test('sends daily subscriptions once per day and weekly subscriptions on Monday', () => {
+test('every subscription is due once on Monday, including one saved as daily', () => {
   const monday = new Date('2026-07-27T07:00:00Z');
   const laterMonday = new Date('2026-07-27T11:00:00Z');
   const tuesday = new Date('2026-07-28T07:00:00Z');
+  const sunday = new Date('2026-08-02T07:00:00Z');
+  const nextMonday = new Date('2026-08-03T07:00:00Z');
+  const sentOnMonday = { enabled: true, frequency: 'weekly', lastSentAt: monday.toISOString() };
+  assert.equal(isSubscriptionDue({ enabled: true, frequency: 'weekly' }, monday), true);
+  assert.equal(isSubscriptionDue({ enabled: true, frequency: 'weekly' }, tuesday), false);
+  assert.equal(isSubscriptionDue(sentOnMonday, laterMonday), false);
+  assert.equal(isSubscriptionDue(sentOnMonday, nextMonday), true);
+  // Daily was a choice until 2026-10; a subscription that stored it is weekly now.
   assert.equal(isSubscriptionDue({ enabled: true, frequency: 'daily' }, monday), true);
+  assert.equal(isSubscriptionDue({ enabled: true, frequency: 'daily' }, tuesday), false);
   assert.equal(isSubscriptionDue({
     enabled: true,
     frequency: 'daily',
-    lastSentAt: monday.toISOString(),
-  }, laterMonday), false);
-  assert.equal(isSubscriptionDue({ enabled: true, frequency: 'weekly' }, monday), true);
-  assert.equal(isSubscriptionDue({ enabled: true, frequency: 'weekly' }, tuesday), false);
+    lastSentAt: '2026-08-01T07:00:00Z',
+  }, sunday), false);
 });
 
 test('maps native arXiv categories to their exact followed topics', () => {
@@ -470,8 +581,48 @@ test('maps native arXiv categories to their exact followed topics', () => {
   assert.equal(papers[0].url, 'https://arxiv.org/abs/2607.26058v1');
 });
 
+test('an arXiv entry carries its primary field and its summary into the digest', () => {
+  const follows = [
+    { type: 'topic', canonicalId: 'math-ph', displayName: 'Mathematical Physics', metadata: { categoryIds: ['math-ph'] } },
+    { type: 'topic', canonicalId: 'cs.LG', displayName: 'Machine Learning', metadata: { categoryIds: ['cs.LG'] } },
+  ];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+      <entry>
+        <id>http://arxiv.org/abs/2608.00001v1</id>
+        <title>Integrable spin chains</title>
+        <summary>  Integrable spin chains admit
+          exact solutions.  </summary>
+        <published>2026-08-01T17:59:59Z</published>
+        <link href="https://arxiv.org/abs/2608.00001v1" rel="alternate" type="text/html"/>
+        <arxiv:primary_category term="math-ph"/>
+        <category term="math-ph"/>
+        <category term="math.MP"/>
+        <author><name>Emmy Noether</name></author>
+      </entry>
+      <entry>
+        <id>http://arxiv.org/abs/2608.00002v1</id>
+        <title>Sparse optimisers</title>
+        <published>2026-08-01T17:59:59Z</published>
+        <link href="https://arxiv.org/abs/2608.00002v1" rel="alternate" type="text/html"/>
+        <arxiv:primary_category term="cs.LG"/>
+        <category term="stat.ML"/>
+        <category term="cs.LG"/>
+        <author><name>Alan Turing</name></author>
+      </entry>
+    </feed>`;
+
+  const byId = Object.fromEntries(parseArxivDigestFeed(xml, follows).map(paper => [paper.id, paper]));
+  // math-ph is filed under physics, though its name starts with "math".
+  assert.equal(byId['2608.00001'].area, 'physics');
+  assert.equal(byId['2608.00001'].abstract, 'Integrable spin chains admit exact solutions.');
+  // The primary category decides, not the cross-list that happens to come first.
+  assert.equal(byId['2608.00002'].area, 'cs');
+  assert.equal('abstract' in byId['2608.00002'], false);
+});
+
 test('scheduled digest fetches native arXiv follows before OpenAlex indexes them', async () => {
-  const now = new Date('2026-07-29T07:00:00Z');
+  const now = new Date('2026-08-03T07:00:00Z');
   const subscriptionKey = 'notification:subscription:arxiv-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: {
@@ -482,7 +633,7 @@ test('scheduled digest fetches native arXiv follows before OpenAlex indexes them
       frequency: 'daily',
       maxPapers: 5,
       unsubscribeToken: 'unsubscribe-token',
-      lastSentAt: '2026-07-28T07:00:00Z',
+      lastSentAt: '2026-07-27T07:00:00Z',
       sentPaperKeys: [],
       follows: [{
         type: 'topic',
@@ -536,7 +687,7 @@ test('scheduled digest fetches native arXiv follows before OpenAlex indexes them
     assert.equal(result.failed, 0);
     assert.equal(result.empty, 0);
     assert.equal(arxivQuery, 'cat:astro-ph.GA');
-    assert.equal(brevoPayload.subject, '1 scientific update for you');
+    assert.equal(brevoPayload.subject, 'The evolution of galaxy dust scaling relations');
     assert.equal(
       brevoPayload.htmlContent.includes('The evolution of galaxy dust scaling relations'),
       true,
@@ -546,7 +697,7 @@ test('scheduled digest fetches native arXiv follows before OpenAlex indexes them
     assert.equal(storedSubscription.sentPaperKeys.includes('id:2607.26058'), true);
     const rawSubscription = await kv.get(subscriptionKey, 'json');
     const deliveryState = await kv.get(`${deliveryStatePrefix}arxiv-reader`, 'json');
-    assert.equal(rawSubscription.lastSentAt, '2026-07-28T07:00:00Z');
+    assert.equal(rawSubscription.lastSentAt, '2026-07-27T07:00:00Z');
     assert.notEqual(rawSubscription.lastSentAt, now.toISOString());
     assert.equal(rawSubscription.lastDelivery, undefined);
     assert.equal(deliveryState.lastSentAt, now.toISOString());
@@ -556,8 +707,7 @@ test('scheduled digest fetches native arXiv follows before OpenAlex indexes them
 });
 
 test('scheduled digest fetches and emails papers from every followed entity type', async () => {
-  const now = new Date();
-  now.setUTCHours(7, 0, 0, 0);
+  const now = new Date('2026-08-10T07:00:00Z');
   const publicationDate = now.toISOString().slice(0, 10);
   const subscriptionKey = 'notification:subscription:user-1';
   const kv = createMemoryKv({
@@ -655,7 +805,8 @@ test('scheduled digest fetches and emails papers from every followed entity type
       brevoPayload.headers.idempotencyKey,
       /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
-    assert.equal(brevoPayload.subject, '4 scientific updates for you');
+    // The most cited of the four leads the edition: Institution, 11 citations.
+    assert.equal(brevoPayload.subject, 'Institution followed paper, and 3 more');
     assert.equal(
       brevoPayload.htmlContent.includes('https://api.papertok.app/notifications/unsubscribe?token=unsubscribe-token'),
       true,
@@ -909,9 +1060,9 @@ test('readers who share an OpenAlex answer keep their own follow names and sent 
 
     assert.equal(summary.sent, 3);
     assert.equal(upstream.openAlex.byQuery['author.id:A1'], 1);
-    assert.match(html('reader-1'), /Because you follow Ada Lovelace/);
+    assert.match(html('reader-1'), /You follow Ada Lovelace/);
     assert.doesNotMatch(html('reader-1'), /Countess of Lovelace/);
-    assert.match(html('reader-2'), /Because you follow Countess of Lovelace/);
+    assert.match(html('reader-2'), /You follow Countess of Lovelace/);
     assert.doesNotMatch(html('reader-2'), /Ada Lovelace/);
     assert.match(html('reader-3'), /Recent paper for T2/);
     assert.doesNotMatch(html('reader-3'), /Recent paper for A1/);
@@ -1140,6 +1291,59 @@ test('a stale unsubscribe token cannot delete a newer subscription generation', 
   assert.equal(await kv.get(`notification:unsubscribe:${staleToken}`), null);
 });
 
+test('the unsubscribe confirmation is a plain form whose native button posts back to its own link', async () => {
+  const token = 'form-unsubscribe-token';
+  const kv = createMemoryKv({
+    'notification:subscription:reader': {
+      uid: 'reader',
+      email: 'reader@example.com',
+      enabled: true,
+      language: 'en',
+      unsubscribeToken: token,
+    },
+    [`notification:unsubscribe:${token}`]: 'reader',
+  });
+  const pageUrl = `https://example.com/notifications/unsubscribe?token=${token}`;
+  const page = await (await handleEmailUnsubscribe(new Request(pageUrl), { NOTIFICATION_STORE: kv })).text();
+
+  // What a browser without script submits, read from the markup.
+  const [, formAttributes = '', formBody = ''] = page.match(/<form\b([^>]*)>([\s\S]*?)<\/form>/) || [];
+  assert.match(formAttributes, /\bmethod="post"/);
+  assert.match(formBody, /<button\b(?![^>]*\btype="(?:button|reset)")[^>]*>\s*Disable emails\s*<\/button>/);
+  const action = new URL(formAttributes.match(/\baction="([^"]*)"/)?.[1].replaceAll('&amp;', '&') ?? '', pageUrl);
+  assert.equal(action.href, pageUrl);
+
+  const submitted = await handleEmailUnsubscribe(new Request(action, { method: 'POST' }), { NOTIFICATION_STORE: kv });
+  assert.equal(submitted.status, 200);
+  assert.match(await submitted.text(), /<h1[^>]*>Emails disabled<\/h1>/);
+  assert.equal(await kv.get('notification:subscription:reader'), null);
+});
+
+test('an unusable unsubscribe link explains itself on a locked-down page with nothing to submit', async () => {
+  // An already-used link: its token no longer resolves to a subscription.
+  const response = await handleEmailUnsubscribe(
+    new Request('https://example.com/notifications/unsubscribe?token=already-used-unsubscribe-token'),
+    { NOTIFICATION_STORE: createMemoryKv() },
+  );
+
+  assert.equal(response.status, 400);
+  assert.match(response.headers.get('content-type') || '', /^text\/html/);
+  const policy = response.headers.get('content-security-policy') || '';
+  assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.doesNotMatch(policy, /script-src/);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  // The token is in this page's URL; the way out must not carry it along.
+  assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+
+  const page = await response.text();
+  assert.match(page, /<title>[^<]*Invalid unsubscribe link[^<]*<\/title>/);
+  assert.match(page, /<h1[^>]*>Invalid unsubscribe link<\/h1>/);
+  assert.doesNotMatch(page, /<form\b/);
+  assert.match(page, /<a\b[^>]*\bhref="https:\/\/papertok\.app\//);
+});
+
 test('keeps delivery state separate and intact when notification preferences change', async () => {
   const subscriptionKey = 'notification:subscription:state-reader';
   const deliveryStateKey = `${deliveryStatePrefix}state-reader`;
@@ -1193,7 +1397,7 @@ test('keeps delivery state separate and intact when notification preferences cha
 });
 
 test('does not attach a completed send from an old subscription generation to a resubscription', async () => {
-  const now = new Date('2026-08-09T07:00:00Z');
+  const now = new Date('2026-08-10T07:00:00Z');
   const subscriptionKey = 'notification:subscription:resubscribed-reader';
   const oldStateKey = `${deliveryStatePrefix}resubscribed-reader:old-generation`;
   const newStateKey = `${deliveryStatePrefix}resubscribed-reader:new-generation`;
@@ -1206,7 +1410,7 @@ test('does not attach a completed send from an old subscription generation to a 
   const newSubscription = digestSubscription({
     uid: 'resubscribed-reader',
     stateId: 'new-generation',
-    updatedAt: '2026-08-09T07:00:01.000Z',
+    updatedAt: '2026-08-10T07:00:01.000Z',
     previewItems: [],
   });
   const kv = createMemoryKv({ [subscriptionKey]: oldSubscription });
@@ -1308,7 +1512,7 @@ test('resumes a deferred subscription scan from its persisted cursor', async () 
 });
 
 test('marks a legacy enabled subscription with zero follows invalid without calling a provider', async () => {
-  const now = new Date('2026-08-02T07:00:02Z');
+  const now = new Date('2026-08-03T07:00:02Z');
   const subscriptionKey = 'notification:subscription:empty-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: {
@@ -1357,7 +1561,7 @@ test('marks a legacy enabled subscription with zero follows invalid without call
 });
 
 test('counts all required source failures as failed rather than empty and never calls the provider', async () => {
-  const now = new Date('2026-08-09T07:00:00Z');
+  const now = new Date('2026-08-10T07:00:00Z');
   const subscriptionKey = 'notification:subscription:source-failure';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({ uid: 'source-failure' }),
@@ -1389,7 +1593,7 @@ test('counts all required source failures as failed rather than empty and never 
 });
 
 test('counts authoritative successful source responses with no papers as empty', async () => {
-  const now = new Date('2026-08-09T07:20:00Z');
+  const now = new Date('2026-08-10T07:20:00Z');
   const subscriptionKey = 'notification:subscription:authoritative-empty';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({ uid: 'authoritative-empty' }),
@@ -1419,9 +1623,9 @@ test('counts authoritative successful source responses with no papers as empty',
   }
 });
 
-test('retries an empty daily selection in the next cron window and sends when papers appear', async () => {
-  const firstWindow = new Date('2026-08-09T07:00:00Z');
-  const retryWindow = new Date('2026-08-09T11:00:00Z');
+test('retries an empty weekly selection in a later cron window and sends when papers appear', async () => {
+  const firstWindow = new Date('2026-08-10T07:00:00Z');
+  const retryWindow = new Date('2026-08-10T11:00:00Z');
   const subscriptionKey = 'notification:subscription:empty-then-ready';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({ uid: 'empty-then-ready' }),
@@ -1475,7 +1679,7 @@ test('retries an empty daily selection in the next cron window and sends when pa
 });
 
 test('sends usable papers after a partial source failure and records the partial outcome', async () => {
-  const now = new Date('2026-08-09T07:00:00Z');
+  const now = new Date('2026-08-10T07:00:00Z');
   const subscriptionKey = 'notification:subscription:partial-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -1564,10 +1768,10 @@ test('builds a deterministic UUID provider idempotency key per user and UTC day'
   assert.match(morning, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
 
-test('two cron windows cannot duplicate a successful daily digest', async () => {
-  const firstWindow = new Date('2026-08-09T07:00:00Z');
-  const retryWindow = new Date('2026-08-09T07:20:00Z');
-  const laterWindow = new Date('2026-08-09T11:00:00Z');
+test('two cron windows cannot duplicate a successful weekly digest', async () => {
+  const firstWindow = new Date('2026-08-10T07:00:00Z');
+  const retryWindow = new Date('2026-08-10T07:20:00Z');
+  const laterWindow = new Date('2026-08-10T11:00:00Z');
   const subscriptionKey = 'notification:subscription:concurrent-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -1606,9 +1810,9 @@ test('two cron windows cannot duplicate a successful daily digest', async () => 
 });
 
 test('retries one unknown provider outcome inside the idempotency window', async () => {
-  const firstWindow = new Date('2026-08-09T07:00:00Z');
-  const firstAttemptAt = new Date('2026-08-09T07:12:00Z');
-  const retryWindow = new Date('2026-08-09T07:20:00Z');
+  const firstWindow = new Date('2026-08-10T07:00:00Z');
+  const firstAttemptAt = new Date('2026-08-10T07:12:00Z');
+  const retryWindow = new Date('2026-08-10T07:20:00Z');
   const subscriptionKey = 'notification:subscription:network-retry-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -1659,9 +1863,9 @@ test('retries one unknown provider outcome inside the idempotency window', async
 });
 
 test('uses the final cron window only to replay a late uncertain provider response', async () => {
-  const firstWindow = new Date('2026-08-09T13:20:00Z');
-  const firstAttemptAt = new Date('2026-08-09T13:32:00Z');
-  const retryWindow = new Date('2026-08-09T13:40:00Z');
+  const firstWindow = new Date('2026-08-10T13:20:00Z');
+  const firstAttemptAt = new Date('2026-08-10T13:32:00Z');
+  const retryWindow = new Date('2026-08-10T13:40:00Z');
   const subscriptionKey = 'notification:subscription:late-provider-retry';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -1703,7 +1907,7 @@ test('uses the final cron window only to replay a late uncertain provider respon
 });
 
 test('does not start a new digest in the final recovery-only cron window', async () => {
-  const now = new Date('2026-08-09T13:40:00Z');
+  const now = new Date('2026-08-10T13:40:00Z');
   const subscriptionKey = 'notification:subscription:final-window-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -2076,8 +2280,8 @@ test('a late Tuesday delivery with an unknown outcome is reconciled on Wednesday
 });
 
 test('provider success followed by state reconciliation failure does not resend', async () => {
-  const firstWindow = new Date('2026-08-09T11:00:00Z');
-  const retryWindow = new Date('2026-08-10T07:00:00Z');
+  const firstWindow = new Date('2026-08-10T11:00:00Z');
+  const retryWindow = new Date('2026-08-11T07:00:00Z');
   const subscriptionKey = 'notification:subscription:reconcile-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -2125,14 +2329,15 @@ test('provider success followed by state reconciliation failure does not resend'
   }
 });
 
-test('a settled digest yesterday does not swallow today digest', async () => {
-  const firstWindow = new Date('2026-08-09T08:00:00Z');
-  const secondWindow = new Date('2026-08-10T08:00:00Z');
-  const subscriptionKey = 'notification:subscription:daily-reader';
+test('a settled Monday digest is not replayed on Tuesday and does not swallow the next one', async () => {
+  const firstWindow = new Date('2026-08-10T08:00:00Z');
+  const tuesdayWindow = new Date('2026-08-11T08:00:00Z');
+  const secondWindow = new Date('2026-08-17T08:00:00Z');
+  const subscriptionKey = 'notification:subscription:weekly-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
-      uid: 'daily-reader',
-      previewItems: [digestPaper({ id: 'paper-day-one', published: '2026-08-09' })],
+      uid: 'weekly-reader',
+      previewItems: [digestPaper({ id: 'paper-week-one', published: '2026-08-09' })],
     }),
   });
   let providerCalls = 0;
@@ -2148,21 +2353,24 @@ test('a settled digest yesterday does not swallow today digest', async () => {
 
   try {
     const first = await runEmailNotificationSchedule(emailEnvironment(kv), firstWindow.getTime());
-    // A new day brings a new paper: yesterday's committed reservation must not
-    // be replayed as a reconciliation instead of today's delivery.
+    // Tuesday looks back at Monday's ledger. A reservation the delivery state
+    // already records must be left alone, not replayed as a reconciliation.
+    const tuesday = await runEmailNotificationSchedule(emailEnvironment(kv), tuesdayWindow.getTime());
     const stored = await kv.get(subscriptionKey, 'json');
-    stored.previewItems = [digestPaper({ id: 'paper-day-two', published: '2026-08-10' })];
+    stored.previewItems = [digestPaper({ id: 'paper-week-two', published: '2026-08-16' })];
     await kv.put(subscriptionKey, JSON.stringify(stored));
     const second = await runEmailNotificationSchedule(emailEnvironment(kv), secondWindow.getTime());
 
     assert.equal(first.sent, 1);
+    assert.equal(tuesday.sent, 0);
+    assert.equal(tuesday.reconciled, 0);
     assert.equal(second.sent, 1);
     assert.equal(second.reconciled, 0);
     assert.equal(providerCalls, 2);
     const state = await storedSubscriptionWithState(kv, subscriptionKey);
     assert.equal(state.lastSentAt, secondWindow.toISOString());
     assert.equal(state.lastDelivery.status, 'sent');
-    assert.equal(state.sentPaperKeys.includes('id:paper-day-two'), true);
+    assert.equal(state.sentPaperKeys.includes('id:paper-week-two'), true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -2443,13 +2651,221 @@ test('exposes a PII-free freshness summary for the latest newsletter schedule', 
 });
 
 test('escapes paper metadata in email HTML', () => {
-  const digest = renderDigest({ frequency: 'daily', displayName: '<Nico>' }, [{
+  const digest = renderDigest({ displayName: '<Nico>' }, [{
     title: '<script>alert(1)</script>',
     authors: ['Ada'],
+    abstract: 'An abstract with <img src=x onerror=alert(1)> inside.',
     matches: [],
   }], 'https://example.com/unsubscribe', true);
   assert.equal(digest.html.includes('<script>alert(1)</script>'), false);
   assert.equal(digest.html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), true);
+  assert.equal(digest.html.includes('<img src=x'), false);
+  assert.equal(digest.html.includes('<Nico>'), false);
+});
+
+const UNSUBSCRIBE_URL = 'https://example.com/unsubscribe';
+const ON_A_MONDAY = { now: Date.parse('2026-08-10T07:00:00Z') };
+
+// The page as read: the hidden preheader above the nameplate repeats the
+// headlines, so order is measured from the nameplate down.
+function pageBody(html) {
+  return html.slice(html.indexOf('<h1'));
+}
+
+function frontPagePaper(overrides = {}) {
+  return {
+    id: 'lead',
+    title: 'Below-threshold surface-code memory',
+    authors: ['A. Rivera', 'M. Okafor', 'L. Chen', 'P. Ito'],
+    published: '2026-08-04',
+    journal: 'arXiv',
+    citationCount: 0,
+    openAccess: true,
+    url: 'https://example.com/lead',
+    area: 'physics',
+    abstract: 'Quantum error correction only pays off once adding qubits lowers the error rate.',
+    matches: [{ type: 'topic', canonicalId: 'quant-ph', displayName: 'Quantum Computing' }],
+    ...overrides,
+  };
+}
+
+function briefPaper(overrides = {}) {
+  return frontPagePaper({
+    id: 'brief',
+    title: 'Sparse attention at scale',
+    authors: ['J. Park'],
+    published: '2026-08-03',
+    journal: 'NeurIPS',
+    citationCount: 4,
+    openAccess: false,
+    url: 'https://example.com/brief',
+    area: 'cs',
+    abstract: 'A brief keeps its abstract to itself.',
+    matches: [{ type: 'topic', canonicalId: 'cs.LG', displayName: 'Machine Learning' }],
+    ...overrides,
+  });
+}
+
+test('the weekly digest is set as a front page: nameplate, dateline, lead story, briefs', () => {
+  const digest = renderDigest(
+    { displayName: 'Nicolás Muñoz' },
+    [frontPagePaper(), briefPaper()],
+    UNSUBSCRIBE_URL,
+    false,
+    ON_A_MONDAY,
+  );
+
+  assert.match(digest.html, /^<!doctype html><html lang="en">/);
+  assert.match(digest.html, /<h1[^>]*>The PaperTok Weekly<\/h1>/);
+  assert.equal(digest.html.includes('Monday, 10 August 2026'), true);
+  assert.equal(digest.html.includes('Weekly edition for Nicolás'), true);
+  assert.match(digest.html, /<h2[^>]*><a [^>]*href="https:\/\/example\.com\/lead"[^>]*>Below-threshold surface-code memory<\/a><\/h2>/);
+  assert.match(digest.html, /<h3[^>]*><a [^>]*href="https:\/\/example\.com\/brief"[^>]*>Sparse attention at scale<\/a><\/h3>/);
+  // Only the lead story carries an excerpt of its abstract.
+  assert.equal(digest.html.includes('Quantum error correction only pays off'), true);
+  assert.equal(digest.html.includes('A brief keeps its abstract to itself.'), false);
+  assert.equal(digest.html.includes('By A. Rivera, M. Okafor, L. Chen and others'), true);
+  assert.equal(digest.html.includes('4 Aug 2026 · arXiv · Open access'), true);
+  assert.equal(digest.html.includes('3 Aug 2026 · NeurIPS · 4 citations'), true);
+  const page = pageBody(digest.html);
+  assert.ok(page.indexOf('Below-threshold') < page.indexOf('Also in this edition'));
+  assert.ok(page.indexOf('Also in this edition') < page.indexOf('Sparse attention at scale'));
+  assert.equal(digest.html.includes(`href="${UNSUBSCRIBE_URL}"`), true);
+
+  assert.match(digest.text, /^THE PAPERTOK WEEKLY\nMonday, 10 August 2026 · Weekly edition for Nicolás\n/);
+  assert.equal(digest.text.includes('Quantum error correction only pays off'), true);
+  assert.equal(digest.text.includes('A brief keeps its abstract to itself.'), false);
+  assert.equal(digest.text.includes(`Unsubscribe: ${UNSUBSCRIBE_URL}`), true);
+});
+
+test('each paper wears its field ink and name; one of no known field wears ink and no name', () => {
+  const unknown = briefPaper({
+    id: 'unknown',
+    title: 'Annual report on photonic interconnects',
+    url: 'https://example.com/unknown',
+    area: undefined,
+    matches: [{ type: 'project', canonicalId: 'P1', displayName: 'QUANTERA' }],
+  });
+  const digest = renderDigest({}, [frontPagePaper(), unknown], UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+
+  // The field's name is set in the field's ink, as is the rule above the story.
+  assert.match(digest.html, /color:#4f46e5[^"]*">Physics</);
+  assert.equal(digest.html.includes('background:#4f46e5'), true);
+  const page = pageBody(digest.html);
+  const beforeUnknownTitle = page.slice(
+    page.indexOf('Also in this edition'),
+    page.indexOf('Annual report on photonic interconnects'),
+  );
+  assert.ok(beforeUnknownTitle.length > 0);
+  assert.equal(beforeUnknownTitle.includes('background:#111318'), true);
+  assert.doesNotMatch(beforeUnknownTitle, /Physics|Computer Science|Engineering/);
+
+  assert.equal(digest.text.includes('PHYSICS · You follow Quantum Computing\nBelow-threshold'), true);
+  assert.equal(digest.text.includes('\nYou follow QUANTERA\nAnnual report on photonic interconnects'), true);
+});
+
+test('the discovery pick is boxed after the briefs and says it is outside the follows', () => {
+  const discovery = briefPaper({
+    id: 'discovery',
+    title: 'A single-dose mRNA vaccine',
+    url: 'https://example.com/discovery',
+    area: 'med',
+    matches: [],
+  });
+  const digest = renderDigest({}, [frontPagePaper(), briefPaper(), discovery], UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+
+  const page = pageBody(digest.html);
+  assert.ok(page.indexOf('Sparse attention at scale') < page.indexOf('Outside your follows'));
+  assert.ok(page.indexOf('Outside your follows') < page.indexOf('A single-dose mRNA vaccine'));
+  assert.equal(digest.text.includes('OUTSIDE YOUR FOLLOWS · MEDICINE\nA single-dose mRNA vaccine'), true);
+});
+
+test('a discovery that is the whole edition leads it and still says where it comes from', () => {
+  const digest = renderDigest({}, [frontPagePaper({ matches: [] })], UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+
+  assert.equal(digest.text.includes('OUTSIDE YOUR FOLLOWS · PHYSICS\nBelow-threshold'), true);
+  assert.equal(digest.html.includes('Also in this edition'), false);
+});
+
+test('the subject is the lead headline and how many papers follow it', () => {
+  const papers = [
+    frontPagePaper(),
+    briefPaper(),
+    briefPaper({ id: 'third', title: 'Third paper', url: 'https://example.com/third' }),
+  ];
+  const subjectOf = list => renderDigest({}, list, UNSUBSCRIBE_URL, false, ON_A_MONDAY).subject;
+
+  assert.equal(subjectOf(papers), 'Below-threshold surface-code memory, and 2 more');
+  assert.equal(subjectOf(papers.slice(0, 1)), 'Below-threshold surface-code memory');
+  const long = subjectOf([frontPagePaper({ title: 'Quantum '.repeat(30).trim() }), briefPaper()]);
+  assert.ok(long.length <= 90, long);
+  assert.match(long, /^Quantum( Quantum)*…, and 1 more$/);
+  assert.equal(subjectOf([frontPagePaper({ title: 'High-Resolution ($2560^3$) Simulation' })]).includes('$'), false);
+});
+
+test('the lead excerpt ends on a whole word and never inside a formula', () => {
+  const abstract = 'word $x^{2}$ '.repeat(100).trim();
+  const digest = renderDigest({}, [frontPagePaper({ abstract })], UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+  const plainAbstract = 'word x^2 '.repeat(100).trim();
+  const excerpt = digest.text.split('\n').find(line => line.startsWith('word'));
+
+  assert.ok(excerpt.endsWith('…'), excerpt);
+  const kept = excerpt.slice(0, -1);
+  assert.ok(plainAbstract.startsWith(kept), excerpt);
+  assert.equal(plainAbstract[kept.length], ' ');
+  assert.ok(kept.length < plainAbstract.length);
+  const leadHtml = digest.html.slice(digest.html.indexOf('<h2'), digest.html.indexOf('By A. Rivera'));
+  assert.equal(leadHtml.includes('$'), false);
+  assert.equal(leadHtml.split('<sup>').length, leadHtml.split('</sup>').length);
+});
+
+test('a lead without an abstract goes straight from headline to byline', () => {
+  const digest = renderDigest({}, [frontPagePaper({ abstract: undefined })], UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+  assert.equal(digest.text.includes('Below-threshold surface-code memory\nBy A. Rivera'), true);
+});
+
+test('keeps the spaces around a formula in email HTML and text', () => {
+  assert.equal(renderScientificHtml('A $x$ b').replace(/<[^>]+>/g, ''), 'A x b');
+  const digest = renderDigest({}, [frontPagePaper({
+    title: 'Density of $\\Omega_m$ at high redshift',
+  })], UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+  assert.equal(digest.text.includes('Density of Ω_m at high redshift'), true);
+  assert.equal(digest.subject, 'Density of Ω_m at high redshift');
+});
+
+test('a full edition stays inside the delivery ledger draft limits', () => {
+  // A reservation keeps the exact draft for one retry, cut at 120 000 / 40 000
+  // characters; a template that outgrew them would retry a truncated email.
+  const papers = Array.from({ length: 10 }, (_, index) => frontPagePaper({
+    id: `paper-${index}`,
+    title: `${'Title '.repeat(82)}${index}`,
+    authors: Array.from({ length: 6 }, () => 'A'.repeat(120)),
+    journal: 'J'.repeat(200),
+    citationCount: 999,
+    abstract: 'word '.repeat(120).trim(),
+    url: `https://example.com/${'p'.repeat(200)}${index}`,
+    matches: Array.from({ length: 4 }, (_, follow) => ({
+      type: 'topic',
+      canonicalId: `T${follow}`,
+      displayName: 'F'.repeat(200),
+    })),
+  }));
+  const digest = renderDigest({ displayName: 'N'.repeat(160) }, papers, UNSUBSCRIBE_URL, false, ON_A_MONDAY);
+  assert.ok(digest.html.length < 120_000, `${digest.html.length} characters of HTML`);
+  assert.ok(digest.text.length < 40_000, `${digest.text.length} characters of text`);
+});
+
+test('the field inks are the app\'s own light-theme inks', async () => {
+  const css = await readFile(new URL('../src/styles/variables.css', import.meta.url), 'utf8');
+  const lightStart = css.indexOf(':root {');
+  const lightTheme = css.slice(lightStart, css.indexOf('\n}', lightStart));
+  assert.ok(lightTheme.includes('--bg-primary: #ffffff'), 'the first :root block is the light theme');
+  for (const [area, { gradient }] of Object.entries(CATEGORIES)) {
+    const token = gradient.match(/var\((--gradient-[a-z]+)\)/)[1];
+    const value = lightTheme.match(new RegExp(`${token}:\\s*(#[0-9a-fA-F]{6})`))?.[1];
+    assert.equal(fieldInks[area], value?.toLowerCase(), area);
+  }
+  assert.deepEqual(Object.keys(fieldInks).sort(), Object.keys(CATEGORIES).sort());
 });
 
 test('renders common LaTeX in email-safe HTML without exposing delimiters', () => {
@@ -2469,7 +2885,6 @@ test('renders common LaTeX in email-safe HTML without exposing delimiters', () =
 
 test('renders every digest label in English', () => {
   const digest = renderDigest({
-    frequency: 'weekly',
     language: 'en',
     displayName: 'Nicolas',
   }, [{
@@ -2477,17 +2892,17 @@ test('renders every digest label in English', () => {
     authors: [],
     citationCount: 2,
     matches: [{ displayName: 'Quantum Physics' }],
-  }], 'https://example.com/unsubscribe', false);
+  }], 'https://example.com/unsubscribe', false, ON_A_MONDAY);
 
-  assert.equal(digest.subject, '1 scientific update for you');
-  assert.equal(digest.html.includes('PAPERTOK · FOLLOWING UPDATES'), true);
-  assert.equal(digest.html.includes('Because you follow Quantum Physics'), true);
+  assert.equal(digest.subject, 'A new result');
+  assert.equal(digest.html.includes('The PaperTok Weekly'), true);
+  assert.equal(digest.html.includes('You follow Quantum Physics'), true);
   assert.equal(digest.html.includes('Authors unavailable'), true);
   assert.equal(digest.html.includes('2 citations'), true);
   assert.equal(digest.html.includes('Open my feed'), true);
   assert.equal(digest.html.includes('Unsubscribe'), true);
   assert.equal(digest.html.includes('Porque sigues'), false);
-  assert.equal(digest.text.includes('This is your weekly selection.'), true);
+  assert.equal(digest.text.includes('Weekly edition for Nicolas'), true);
 });
 
 test('a subscription stored with legacy Spanish still gets an English digest', () => {
@@ -2500,13 +2915,13 @@ test('a subscription stored with legacy Spanish still gets an English digest', (
     authors: [],
     citationCount: 1,
     matches: [{ displayName: 'Quantum Physics' }],
-  }], 'https://example.com/unsubscribe', false);
+  }], 'https://example.com/unsubscribe', false, ON_A_MONDAY);
 
-  assert.equal(digest.subject, '1 scientific update for you');
+  assert.equal(digest.subject, 'A new result');
   assert.match(digest.html, /^<!doctype html><html lang="en">/);
-  assert.equal(digest.html.includes('Because you follow Quantum Physics'), true);
+  assert.equal(digest.html.includes('You follow Quantum Physics'), true);
   assert.equal(digest.html.includes('1 citation'), true);
-  assert.equal(digest.text.includes('This is your daily selection.'), true);
+  assert.equal(digest.text.includes('Weekly edition for Nicolas'), true);
   for (const spanish of ['Porque sigues', 'novedad', 'Darme de baja', 'selección']) {
     assert.equal(digest.html.includes(spanish), false, spanish);
     assert.equal(digest.text.includes(spanish), false, spanish);
@@ -2542,18 +2957,28 @@ test('the unsubscribe page is English even for legacy Spanish links and browsers
     { NOTIFICATION_STORE: kv },
   );
   assert.equal(invalid.status, 400);
-  assert.equal(await invalid.text(), 'Invalid unsubscribe link');
+  const invalidPage = await invalid.text();
+  assert.match(invalidPage, /<html lang="en">/);
+  assert.match(invalidPage, /<h1[^>]*>Invalid unsubscribe link<\/h1>/);
 
   const unavailable = await handleEmailUnsubscribe(new Request(url, { headers }), {});
   assert.equal(unavailable.status, 503);
-  assert.equal(await unavailable.text(), 'Service unavailable');
+  const unavailablePage = await unavailable.text();
+  assert.match(unavailablePage, /<html lang="en">/);
+  assert.match(unavailablePage, /<h1[^>]*>Service unavailable<\/h1>/);
 });
 
-test('localizes the test-email subject and empty state', () => {
-  const digest = renderDigest({ frequency: 'daily', language: 'en' }, [], 'https://example.com/unsubscribe', true);
-  assert.equal(digest.subject, 'PaperTok: test email');
-  assert.equal(digest.html.includes('Your PaperTok email works'), true);
-  assert.equal(digest.html.includes('We have not found recent publications'), true);
+test('the test email is the same edition, says it is a test, and keeps its own subject', () => {
+  const empty = renderDigest({ language: 'en' }, [], UNSUBSCRIBE_URL, true, ON_A_MONDAY);
+  assert.equal(empty.subject, 'PaperTok: test email');
+  assert.match(empty.html, /<h1[^>]*>The PaperTok Weekly<\/h1>/);
+  assert.equal(empty.html.includes('Your PaperTok email works'), true);
+  assert.equal(empty.html.includes('We have not found recent publications'), true);
+
+  const withPaper = renderDigest({}, [frontPagePaper()], UNSUBSCRIBE_URL, true, ON_A_MONDAY);
+  assert.equal(withPaper.subject, 'PaperTok: test email');
+  assert.equal(withPaper.html.includes('Your PaperTok email works'), true);
+  assert.match(withPaper.html, /<h2[^>]*><a [^>]*>Below-threshold surface-code memory<\/a><\/h2>/);
 });
 
 function identityEnvironment(kv) {
@@ -2618,6 +3043,50 @@ test('accepts a verified address or a federated provider that owns it', async ()
   assert.equal(federated.preferences.email, 'Reader@Example.com');
 });
 
+test('reports a subscription saved as daily as weekly', async () => {
+  const kv = createMemoryKv({
+    'notification:subscription:reader': digestSubscription({ uid: 'reader', frequency: 'daily' }),
+  });
+  const restore = stubFetch(jsonResponse(200, {
+    users: [{ localId: 'reader', email: 'reader@example.com', emailVerified: true }],
+  }));
+  try {
+    const { preferences } = await handleEmailNotificationRequest(
+      preferencesRequest(),
+      identityEnvironment(kv),
+      '/notifications/preferences',
+    );
+    assert.equal(preferences.enabled, true);
+    assert.equal(preferences.frequency, 'weekly');
+  } finally {
+    restore();
+  }
+});
+
+test('an older client that still asks for daily emails is subscribed weekly', async () => {
+  const kv = createMemoryKv();
+  const request = new Request('https://example.com/notifications/preferences', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      enabled: true,
+      frequency: 'daily',
+      maxPapers: 5,
+      follows: [digestFollow()],
+      previewItems: [],
+    }),
+  });
+
+  const saved = await saveSubscription(request, { NOTIFICATION_STORE: kv }, {
+    uid: 'old-client',
+    email: 'reader@example.com',
+    displayName: 'Reader',
+  });
+
+  assert.equal(saved.frequency, 'weekly');
+  assert.equal((await kv.get('notification:subscription:old-client', 'json')).frequency, 'weekly');
+});
+
 test('gives the identity lookup and both provider probes a deadline', async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
@@ -2660,7 +3129,7 @@ test('gives the identity lookup and both provider probes a deadline', async () =
 });
 
 test('sends the Brevo digest with one-click unsubscribe headers', async () => {
-  const now = new Date('2026-08-09T08:00:00Z');
+  const now = new Date('2026-08-10T08:00:00Z');
   const subscriptionKey = 'notification:subscription:brevo-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({
@@ -2696,7 +3165,7 @@ test('sends the Brevo digest with one-click unsubscribe headers', async () => {
 });
 
 test('refuses to run the schedule without an atomic delivery ledger', async () => {
-  const now = new Date('2026-08-09T08:00:00Z');
+  const now = new Date('2026-08-10T08:00:00Z');
   const subscriptionKey = 'notification:subscription:unprotected-reader';
   const kv = createMemoryKv({
     [subscriptionKey]: digestSubscription({

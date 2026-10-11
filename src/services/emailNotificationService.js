@@ -1,5 +1,6 @@
 import { auth } from './firebase.js';
 import { authenticatedWorkerFetch, trustedWorkerUrl } from './workerApiClient.js';
+import { areaKeyForPaper } from '../utils/areaAccent.js';
 import { getLocalizedInstitutionName } from '../utils/institutionLocalization.js';
 import {
   isOpaqueQueryTopicText,
@@ -76,7 +77,11 @@ export function serializeFollowForNotifications(follow = {}) {
 }
 
 export function serializeUpdateForNotifications(paper = {}) {
+  // The card's own resolution, so the email inks a paper as the feed does.
+  // The abstract stays behind: the Worker fetches its own.
+  const area = areaKeyForPaper(paper);
   return {
+    ...(area ? { area } : {}),
     id: paper.id,
     doi: paper.doi,
     title: paper.title,
@@ -152,20 +157,28 @@ export async function getEmailNotificationHealth() {
   }
 }
 
+/**
+ * The body of a preferences save. The digest is weekly for everyone; the
+ * frequency is still sent, always as weekly, because this frontend can be live
+ * before the Worker that ignores it, and that Worker's default is daily.
+ */
+export function buildNotificationPreferencesPayload(preferences, follows = [], previewItems = []) {
+  return {
+    enabled: Boolean(preferences.enabled),
+    frequency: 'weekly',
+    maxPapers: [3, 5, 10].includes(Number(preferences.maxPapers)) ? Number(preferences.maxPapers) : 5,
+    // English only: a preference saved as 'es' before the interface went
+    // English-only must not keep the emails in Spanish.
+    language: 'en',
+    follows: follows.slice(0, 40).map(follow => serializeFollowForNotifications(follow)),
+    previewItems: previewItems.slice(0, 20).map(paper => serializeUpdateForNotifications(paper)),
+  };
+}
+
 export async function saveEmailNotificationPreferences(preferences, follows = [], previewItems = []) {
-  // English only: a preference saved as 'es' before the interface went
-  // English-only must not keep the emails in Spanish.
-  const language = 'en';
   const payload = await authenticatedRequest('/notifications/preferences', {
     method: 'PUT',
-    body: JSON.stringify({
-      enabled: Boolean(preferences.enabled),
-      frequency: preferences.frequency === 'weekly' ? 'weekly' : 'daily',
-      maxPapers: [3, 5, 10].includes(Number(preferences.maxPapers)) ? Number(preferences.maxPapers) : 5,
-      language,
-      follows: follows.slice(0, 40).map(follow => serializeFollowForNotifications(follow)),
-      previewItems: previewItems.slice(0, 20).map(paper => serializeUpdateForNotifications(paper)),
-    }),
+    body: JSON.stringify(buildNotificationPreferencesPayload(preferences, follows, previewItems)),
   });
   return payload.preferences;
 }

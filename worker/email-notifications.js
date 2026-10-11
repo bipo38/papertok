@@ -1,4 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
+import { CATEGORIES } from '../src/data/categoryTaxonomy.js';
+import { areaKeyForPaper } from '../src/utils/areaAccent.js';
+import { usableOpenAlexAbstract } from '../src/utils/openAlexAbstract.js';
 import { filterRelevantQueryTopicPapers } from '../src/utils/queryTopicSearch.js';
 import { applyEmailDeliveryLedgerAction } from './email-delivery-ledger.js';
 import { readBoundedJson as readBoundedRequestJson } from './bounded-body.js';
@@ -15,6 +18,8 @@ const ARXIV_API = 'https://export.arxiv.org/api/query';
 // este Worker se despliega por su cuenta, asi que lo que acuna a partir de
 // ahora es la ruta, no el fragmento.
 const PAPER_TOK_URL = 'https://papertok.app/following';
+// Email updates are switched on and off from the Settings page.
+const PAPER_TOK_SETTINGS_URL = 'https://papertok.app/settings';
 const MAX_FOLLOWS = 40;
 const MAX_QUERIED_FOLLOWS = 24;
 const MAX_PREVIEW_ITEMS = 20;
@@ -28,6 +33,31 @@ const DELIVERY_LEDGER_PREFIX = 'notification:delivery-ledger:';
 const TEST_IDEMPOTENCY_WINDOW_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DIGEST_FRESHNESS_DAYS = 10;
+// What the lead story's excerpt can draw on; the excerpt itself is shorter.
+const DIGEST_ABSTRACT_MAX_LENGTH = 600;
+
+/**
+ * The twelve field inks of the light theme (`--gradient-*` in
+ * src/styles/variables.css), keyed like `CATEGORIES`. An email cannot read the
+ * app's custom properties, so the values are copied here, and a test holds
+ * them to the stylesheet. Every one is at least 4.9:1 on white, so a field
+ * name set in its own ink stays readable at mono-label size.
+ */
+const FIELD_INKS = Object.freeze({
+  physics: '#4f46e5',
+  cs: '#c2410c',
+  math: '#7e22ce',
+  stat: '#1d4ed8',
+  econ: '#0f766e',
+  'q-fin': '#0e7490',
+  eess: '#a16207',
+  mech: '#475569',
+  civil: '#92400e',
+  chemeng: '#4d7c0f',
+  med: '#be123c',
+  bio: '#15803d',
+});
+
 const SCHEDULE_HISTORY_TTL_SECONDS = 14 * 24 * 60 * 60;
 const DELIVERY_LEDGER_TTL_SECONDS = 3 * 24 * 60 * 60;
 const DELIVERY_STATE_TTL_SECONDS = 120 * 24 * 60 * 60;
@@ -104,13 +134,20 @@ async function readBoundedJson(request, maximumBytes = MAX_PREFERENCES_REQUEST_B
   });
 }
 
-function escapeHtml(value) {
-  return cleanText(value, 5_000)
+// Escapes without trimming. A fragment between two formulas begins or ends
+// with the space that separates them, and trimming it glued "Density of" to
+// the Ω that followed.
+function escapeHtmlCharacters(value) {
+  return String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function escapeHtml(value) {
+  return escapeHtmlCharacters(cleanText(value, 5_000));
 }
 
 const EMAIL_LATEX_DELIMITERS = [
@@ -241,7 +278,7 @@ function renderEmailMath(value) {
   let cursor = 0;
 
   const appendText = (text) => {
-    html += escapeHtml(text);
+    html += escapeHtmlCharacters(text);
     plain += text;
   };
 
@@ -270,23 +307,29 @@ function renderEmailMath(value) {
       token = match?.[0] || expression[cursor] || '';
       cursor += token.length || 1;
     }
-    html += `<${tag}>${escapeHtml(token)}</${tag}>`;
+    html += `<${tag}>${escapeHtmlCharacters(token)}</${tag}>`;
     plain += `${marker}${token}`;
   }
 
   return { html, plain };
 }
 
+function mathSpan(html) {
+  return `<span style="font-family:Arial,sans-serif;white-space:nowrap">${html}</span>`;
+}
+
+// splitEmailScientificText has already collapsed the whitespace, so each
+// fragment keeps exactly the spaces that separate it from its formulas.
 function renderScientificHtml(value) {
   return splitEmailScientificText(value).map((chunk) => {
-    if (chunk.type === 'text') return escapeHtml(chunk.value);
-    return `<span style="font-family:Arial,sans-serif;white-space:nowrap">${renderEmailMath(chunk.value).html}</span>`;
+    if (chunk.type === 'text') return escapeHtmlCharacters(chunk.value);
+    return mathSpan(renderEmailMath(chunk.value).html);
   }).join('');
 }
 
 function renderScientificText(value) {
   return splitEmailScientificText(value).map(chunk => (
-    chunk.type === 'text' ? cleanText(chunk.value, 5_000) : renderEmailMath(chunk.value).plain
+    chunk.type === 'text' ? chunk.value : renderEmailMath(chunk.value).plain
   )).join('');
 }
 
@@ -407,6 +450,8 @@ function sanitizePaper(input = {}) {
   const matches = Array.isArray(input._followedEntityMatches || input.matches)
     ? (input._followedEntityMatches || input.matches).map(sanitizeFollow).filter(Boolean).slice(0, 4)
     : [];
+  const area = cleanText(input.area, 20);
+  const abstract = cleanText(input.abstract, DIGEST_ABSTRACT_MAX_LENGTH);
   return {
     id: cleanText(input.id, 300),
     doi: cleanText(input.doi, 300),
@@ -418,16 +463,27 @@ function sanitizePaper(input = {}) {
     openAccess: Boolean(input.openAccess),
     url: safeUrl(input.landingPageUrl || input.pdfUrl || (input.doi ? `https://doi.org/${input.doi}` : '')),
     matches,
+    // Both stay missing rather than guessed: a paper of no known field is set
+    // in ink with no field name, and one without an abstract has no excerpt.
+    ...(Object.hasOwn(FIELD_INKS, area) ? { area } : {}),
+    ...(abstract ? { abstract } : {}),
   };
 }
 
+/**
+ * The digest is weekly for everyone. Daily was a choice until 2026-10; the
+ * field stays, always `weekly`, so a client deployed before the choice was
+ * retired still reads a value it knows, and whatever it asks for is stored as
+ * weekly.
+ */
+const DIGEST_FREQUENCY = 'weekly';
+
 function sanitizePreferences(input = {}) {
-  const frequency = input.frequency === 'weekly' ? 'weekly' : 'daily';
   const requestedMax = Number(input.maxPapers);
   const maxPapers = [3, 5, 10].includes(requestedMax) ? requestedMax : 5;
   return {
     enabled: Boolean(input.enabled),
-    frequency,
+    frequency: DIGEST_FREQUENCY,
     maxPapers,
     // English-only product: any incoming language (including a legacy 'es') is stored as 'en'.
     language: 'en',
@@ -639,6 +695,12 @@ function parseArxivDigestFeed(xml, follows = []) {
       openAccess: true,
       landingPageUrl,
       matches,
+      // The primary category, ahead of whichever cross-list is listed first.
+      area: areaKeyForPaper({
+        primaryCategory: cleanText(entry?.primary_category?.['@_term'], 80),
+        categories,
+      }),
+      abstract: cleanText(entry?.summary, DIGEST_ABSTRACT_MAX_LENGTH),
     });
   }).filter(Boolean);
 }
@@ -676,7 +738,7 @@ const TRUSTED_EMAIL_PROVIDERS = new Set(['google.com', 'github.com']);
 /**
  * FIREBASE_WEB_API_KEY is public, so the Worker cannot assume the console only
  * offers Google and GitHub: any sign-up method that hands over an unverified
- * address would otherwise subscribe a stranger's inbox to the daily digest.
+ * address would otherwise subscribe a stranger's inbox to the digest.
  * Firebase does not always flag federated sign-ins as verified, so an identity
  * provider that vouched for the same address counts as proof of possession.
  */
@@ -718,7 +780,7 @@ async function verifyFirebaseIdentity(request, env) {
 function publicSubscription(subscription, email) {
   return {
     enabled: Boolean(subscription?.enabled),
-    frequency: subscription?.frequency || 'daily',
+    frequency: DIGEST_FREQUENCY,
     maxPapers: subscription?.maxPapers || 5,
     language: subscriptionLanguage(subscription),
     email,
@@ -909,6 +971,12 @@ function mapOpenAlexPaper(work, follow) {
     citationCount: work?.cited_by_count,
     openAccess: work?.open_access?.is_oa,
     landingPageUrl: work?.best_oa_location?.landing_page_url || work?.primary_location?.landing_page_url,
+    // The card's own resolution: the field, then what the topic is called.
+    area: areaKeyForPaper({
+      primaryTopic: work?.primary_topic,
+      categories: [work?.primary_topic?.display_name].filter(Boolean),
+    }),
+    abstract: usableOpenAlexAbstract(work),
     _followedEntityMatches: follow ? [follow] : [],
   });
 }
@@ -1091,6 +1159,10 @@ function publicationTime(paper) {
 
 function mergePaperRecords(current, paper) {
   const matches = [...(current.matches || []), ...(paper.matches || [])];
+  const area = current.area || paper.area;
+  const abstract = (current.abstract?.length || 0) >= (paper.abstract?.length || 0)
+    ? current.abstract
+    : paper.abstract;
   return {
     ...current,
     ...paper,
@@ -1106,6 +1178,8 @@ function mergePaperRecords(current, paper) {
     matches: matches.filter((match, index) => matches.findIndex(candidate => (
       candidate.type === match.type && candidate.canonicalId === match.canonicalId
     )) === index),
+    ...(area ? { area } : {}),
+    ...(abstract ? { abstract } : {}),
   };
 }
 
@@ -1537,23 +1611,35 @@ function providerOutcomeDefinitelyRejected(status) {
 }
 
 const EMAIL_COPY = {
-  header: 'PAPERTOK · FOLLOWING UPDATES',
-  testTitle: 'Your PaperTok email works',
-  testSubject: 'PaperTok: test email',
-  greeting: 'Hi',
-  selection: frequency => `This is your ${frequency === 'weekly' ? 'weekly' : 'daily'} selection.`,
-  digestTitle: count => (count === 1 ? '1 scientific update for you' : `${count} scientific updates for you`),
-  followReason: names => `Because you follow ${names.slice(0, 2).join(' and ')}`,
-  discoveryReason: 'A highlighted PaperTok discovery',
+  nameplate: 'The PaperTok Weekly',
+  standfirst: 'New research from the people, topics and places you follow',
+  edition: 'Weekly edition',
+  editionFor: name => `Weekly edition for ${name}`,
+  paperCount: count => (count === 1 ? '1 paper' : `${count} papers`),
+  followReason: names => `You follow ${names.slice(0, 2).join(' and ')}`,
+  outsideFollows: 'Outside your follows',
+  alsoInEdition: 'Also in this edition',
+  byline: authors => `By ${authors}`,
+  andOthers: 'and others',
   authorUnavailable: 'Authors unavailable',
   citations: count => `${count} ${count === 1 ? 'citation' : 'citations'}`,
+  openAccess: 'Open access',
+  readPaper: 'Read the paper',
+  andMore: count => `, and ${count} more`,
+  testSubject: 'PaperTok: test email',
+  testKicker: 'Test email',
+  testBody: 'Your PaperTok email works. The weekly edition arrives on Monday mornings when there is something new from what you follow.',
   empty: 'Your connection is ready. We have not found recent publications from what you follow yet.',
   openInbox: 'Open my feed',
-  footer: 'You are receiving this email because you enabled email updates in PaperTok.',
+  colophon: 'The PaperTok Weekly · Every Monday',
+  footer: 'You are receiving this email because you turned on email updates in PaperTok.',
   unsubscribe: 'Unsubscribe',
-  openPaperTok: 'Open PaperTok',
+  emailUpdates: 'Email updates',
   unavailable: 'Service unavailable',
+  unavailableBody: 'Your email settings could not be reached. Please try this link again later.',
   invalidLink: 'Invalid unsubscribe link',
+  invalidLinkBody: 'If you have already unsubscribed, there is nothing more to do. Otherwise, turn off email updates in Settings.',
+  openSettings: 'Open Settings',
   confirmTitle: 'Confirm unsubscribe',
   confirmBody: 'Do you want to stop receiving PaperTok updates by email?',
   confirmAction: 'Disable emails',
@@ -1570,41 +1656,330 @@ function subscriptionLanguage() {
   return 'en';
 }
 
-function paperReason(paper) {
-  const copy = EMAIL_COPY;
-  const names = (paper.matches || []).map(match => match.displayName).filter(Boolean);
-  return names.length
-    ? copy.followReason(names)
-    : copy.discoveryReason;
+// The light theme's ground, ink and rules (src/styles/variables.css), copied
+// for the same reason as FIELD_INKS.
+const EMAIL_PALETTE = Object.freeze({
+  page: '#f7f7f8', // --bg-secondary
+  sheet: '#ffffff', // --bg-card
+  ink: '#111318', // --text-primary, --border-ink
+  inkHover: '#2b2f38', // --accent-primary-hover: the unsubscribe page's button
+  secondary: '#5b6270', // --text-secondary
+  tertiary: '#6b7280', // --text-tertiary
+  rule: '#e6e7ea', // --border-subtle
+  frame: '#d3d5db', // --border-default
+  brand: '#ffd21e', // --brand-yellow: the PT mark and nothing else
+});
+
+// The app's three voices, each followed by what a mail client without web
+// fonts (most of them) will actually draw.
+const EMAIL_FONTS = Object.freeze({
+  serif: "Newsreader,'Iowan Old Style',Georgia,serif",
+  sans: "Inter,-apple-system,'Segoe UI',Arial,sans-serif",
+  mono: "'IBM Plex Mono',Menlo,Consolas,monospace",
+});
+
+const DIGEST_EXCERPT_LENGTH = 280;
+const DIGEST_SUBJECT_MAX_LENGTH = 90;
+const DIGEST_PREHEADER_MAX_LENGTH = 140;
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// Spelled out by hand rather than through Intl, so the dateline cannot change
+// with whatever locale data the runtime ships.
+function editionDate(now) {
+  const date = new Date(now);
+  return `${WEEKDAY_NAMES[date.getUTCDay()]}, ${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
-function renderDigest(subscription, papers, unsubscribeUrl, test) {
-  const copy = EMAIL_COPY;
-  const greeting = subscription.displayName
-    ? `${copy.greeting}, ${subscription.displayName.split(' ')[0]}`
-    : copy.greeting;
-  const title = test ? copy.testTitle : copy.digestTitle(papers.length);
-  const paperHtml = papers.length
-    ? papers.map(paper => `
-      <div style="padding:20px 0;border-bottom:1px solid #2b2933">
-        <div style="font-size:12px;color:#a98cf7;margin-bottom:7px">${escapeHtml(paperReason(paper))}</div>
-        <a href="${escapeHtml(paper.url || PAPER_TOK_URL)}" style="color:#f6f4fb;text-decoration:none;font-size:18px;font-weight:700;line-height:1.35">${renderScientificHtml(paper.title)}</a>
-        <div style="color:#a7a2b3;font-size:13px;margin-top:8px">${escapeHtml(paper.authors?.slice(0, 3).join(', ') || copy.authorUnavailable)}</div>
-        <div style="color:#787381;font-size:12px;margin-top:6px">${escapeHtml([paper.published, paper.journal, paper.citationCount ? copy.citations(paper.citationCount) : ''].filter(Boolean).join(' · '))}</div>
-      </div>`).join('')
-    : `<div style="padding:24px 0;color:#b9b4c3">${escapeHtml(copy.empty)}</div>`;
+function publicationLabel(value) {
+  const time = Date.parse(value || '');
+  if (!Number.isFinite(time)) return '';
+  const date = new Date(time);
+  return `${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()].slice(0, 3)} ${date.getUTCFullYear()}`;
+}
 
-  const html = `<!doctype html><html lang="en"><body style="margin:0;background:#0c0b10;color:#f6f4fb;font-family:Arial,sans-serif">
-    <div style="max-width:640px;margin:0 auto;padding:36px 24px">
-      <div style="color:#8b5cf6;font-size:12px;font-weight:700;letter-spacing:1px">${escapeHtml(copy.header)}</div>
-      <h1 style="font-size:28px;line-height:1.15;margin:14px 0 8px">${escapeHtml(title)}</h1>
-      <p style="color:#a7a2b3;margin:0 0 16px">${escapeHtml(`${greeting}. ${copy.selection(subscription.frequency)}`)}</p>
-      ${paperHtml}
-      <a href="${PAPER_TOK_URL}" style="display:inline-block;margin-top:24px;padding:12px 18px;background:#8b5cf6;color:white;text-decoration:none;border-radius:6px;font-weight:700">${escapeHtml(copy.openInbox)}</a>
-      <p style="color:#676270;font-size:11px;line-height:1.5;margin-top:34px">${escapeHtml(copy.footer)} <a href="${escapeHtml(unsubscribeUrl)}" style="color:#9b93a8">${escapeHtml(copy.unsubscribe)}</a>.</p>
-    </div></body></html>`;
-  const text = `${title}\n\n${greeting}. ${copy.selection(subscription.frequency)}\n\n${papers.map(paper => `${renderScientificText(paper.title)}\n${paperReason(paper)}\n${paper.url || PAPER_TOK_URL}`).join('\n\n')}\n\n${copy.openPaperTok}: ${PAPER_TOK_URL}\n${copy.unsubscribe}: ${unsubscribeUrl}`;
-  return { html, text, subject: test ? copy.testSubject : title };
+function truncateAtWord(value, maxLength) {
+  if (value.length <= maxLength) return value;
+  const head = value.slice(0, maxLength);
+  const boundary = head.lastIndexOf(' ');
+  const kept = boundary > 0 ? head.slice(0, boundary) : head.slice(0, maxLength - 1);
+  return `${kept.replace(/[\s,;:.]+$/, '')}…`;
+}
+
+/**
+ * The lead story's excerpt: the abstract up to a word boundary. A formula is
+ * kept whole or left out, never cut, so no `$` and no half `<sub>` reaches
+ * the reader.
+ */
+function renderScientificExcerpt(value, maxLength = DIGEST_EXCERPT_LENGTH) {
+  const parts = [];
+  let length = 0;
+  let cut = false;
+  for (const chunk of splitEmailScientificText(value)) {
+    if (chunk.type === 'math') {
+      const math = renderEmailMath(chunk.value);
+      if (length + math.plain.length > maxLength) {
+        cut = true;
+        break;
+      }
+      parts.push({ html: mathSpan(math.html), text: math.plain });
+      length += math.plain.length;
+      continue;
+    }
+    if (length + chunk.value.length <= maxLength) {
+      parts.push({ text: chunk.value });
+      length += chunk.value.length;
+      continue;
+    }
+    const head = chunk.value.slice(0, maxLength - length + 1);
+    const boundary = head.lastIndexOf(' ');
+    if (boundary > 0) parts.push({ text: chunk.value.slice(0, boundary) });
+    cut = true;
+    break;
+  }
+  if (cut && parts.length && !parts.at(-1).html) {
+    parts.at(-1).text = parts.at(-1).text.replace(/[\s,;:.]+$/, '');
+  }
+  const text = parts.map(part => part.text).join('');
+  if (!text.trim()) return { html: '', text: '' };
+  const html = parts.map(part => part.html || escapeHtmlCharacters(part.text)).join('');
+  return cut ? { html: `${html}…`, text: `${text}…` } : { html, text };
+}
+
+function isDiscovery(paper) {
+  return !(paper.matches || []).length;
+}
+
+function paperReason(paper) {
+  const names = (paper.matches || []).map(match => match.displayName).filter(Boolean);
+  return names.length ? EMAIL_COPY.followReason(names) : EMAIL_COPY.outsideFollows;
+}
+
+function paperField(paper) {
+  if (!Object.hasOwn(FIELD_INKS, paper.area || '')) return { label: '', ink: EMAIL_PALETTE.ink };
+  return { label: CATEGORIES[paper.area].label, ink: FIELD_INKS[paper.area] };
+}
+
+function paperByline(paper, { lead = false } = {}) {
+  const authors = (paper.authors || []).filter(Boolean);
+  if (!authors.length) return EMAIL_COPY.authorUnavailable;
+  const names = authors.length <= 3
+    ? authors.join(', ')
+    : `${authors.slice(0, 3).join(', ')} ${EMAIL_COPY.andOthers}`;
+  return lead ? EMAIL_COPY.byline(names) : names;
+}
+
+function paperMeta(paper) {
+  return [
+    publicationLabel(paper.published),
+    paper.journal,
+    paper.citationCount ? EMAIL_COPY.citations(paper.citationCount) : '',
+    paper.openAccess ? EMAIL_COPY.openAccess : '',
+  ].filter(Boolean).join(' · ');
+}
+
+function textKicker(paper) {
+  const field = paperField(paper).label.toUpperCase();
+  return isDiscovery(paper)
+    ? [EMAIL_COPY.outsideFollows.toUpperCase(), field].filter(Boolean).join(' · ')
+    : [field, paperReason(paper)].filter(Boolean).join(' · ');
+}
+
+function digestSubject(lead, count) {
+  if (!lead) return EMAIL_COPY.nameplate;
+  const more = count > 1 ? EMAIL_COPY.andMore(count - 1) : '';
+  return `${truncateAtWord(renderScientificText(lead.title), DIGEST_SUBJECT_MAX_LENGTH - more.length)}${more}`;
+}
+
+function monoStyle({ size = 11, color = EMAIL_PALETTE.tertiary, weight = 600, tracking = '0.06em' } = {}) {
+  return `font:${weight} ${size}px/1.5 ${EMAIL_FONTS.mono};letter-spacing:${tracking};text-transform:uppercase;color:${color}`;
+}
+
+// The field rule: the 34 × 3 bar the app sets above a headline.
+function fieldRule(ink) {
+  return `<div style="width:34px;height:3px;background:${ink};line-height:3px;font-size:0">&nbsp;</div>`;
+}
+
+function storyLink(paper, style) {
+  return `<a href="${escapeHtml(paper.url || PAPER_TOK_URL)}" style="${style}">${renderScientificHtml(paper.title)}</a>`;
+}
+
+function renderLeadStory(paper) {
+  const field = paperField(paper);
+  const reason = `<span style="color:${EMAIL_PALETTE.tertiary}">${escapeHtml(isDiscovery(paper) ? EMAIL_COPY.outsideFollows : paperReason(paper))}</span>`;
+  const label = field.label ? `<span style="color:${field.ink}">${escapeHtml(field.label)}</span> · ` : '';
+  const excerpt = renderScientificExcerpt(paper.abstract);
+  const meta = paperMeta(paper);
+  const url = escapeHtml(paper.url || PAPER_TOK_URL);
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:26px 0">
+${fieldRule(field.ink)}
+<p style="margin:12px 0 0;${monoStyle()}">${label}${reason}</p>
+<h2 class="pt-lead" style="margin:10px 0 12px;font:600 34px/1.12 ${EMAIL_FONTS.serif};letter-spacing:-0.02em;color:${EMAIL_PALETTE.ink}">${storyLink(paper, `color:${EMAIL_PALETTE.ink};text-decoration:none`)}</h2>
+${excerpt.html ? `<p style="margin:0 0 14px;font:400 17px/1.55 ${EMAIL_FONTS.serif};color:${EMAIL_PALETTE.ink}">${excerpt.html}</p>` : ''}
+<p style="margin:0;font:400 14px/1.5 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.secondary}">${escapeHtml(paperByline(paper, { lead: true }))}</p>
+${meta ? `<p style="margin:6px 0 0;${monoStyle({ tracking: '0.04em' })}">${escapeHtml(meta)}</p>` : ''}
+<p style="margin:14px 0 0"><a href="${url}" style="font:600 14px/1 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.ink};text-decoration:underline">${escapeHtml(EMAIL_COPY.readPaper)}&nbsp;→</a></p>
+</td></tr></table>`;
+}
+
+function renderBrief(paper) {
+  const field = paperField(paper);
+  const meta = paperMeta(paper);
+  const small = { size: 10.5 };
+  if (isDiscovery(paper)) {
+    // The exploration pick is set apart in a ruled box, like an editor's note.
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${EMAIL_PALETTE.ink};background:${EMAIL_PALETTE.page}"><tr><td style="padding:14px 14px 16px">
+<p style="margin:0;${monoStyle({ ...small, color: EMAIL_PALETTE.ink })}"><span aria-hidden="true">★ </span>${escapeHtml(EMAIL_COPY.outsideFollows)}</p>
+${field.label ? `<p style="margin:6px 0 0;${monoStyle({ ...small, color: field.ink })}">${escapeHtml(field.label)}</p>` : ''}
+<h3 style="margin:6px 0 8px;font:600 18px/1.25 ${EMAIL_FONTS.serif};color:${EMAIL_PALETTE.ink}">${storyLink(paper, `color:${EMAIL_PALETTE.ink};text-decoration:none`)}</h3>
+<p style="margin:0;font:400 13px/1.5 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.secondary}">${escapeHtml(paperByline(paper))}</p>
+${meta ? `<p style="margin:5px 0 0;${monoStyle({ ...small, color: EMAIL_PALETTE.secondary, tracking: '0.04em' })}">${escapeHtml(meta)}</p>` : ''}
+</td></tr></table>`;
+  }
+  return `${fieldRule(field.ink)}
+${field.label ? `<p style="margin:10px 0 0;${monoStyle({ ...small, color: field.ink })}">${escapeHtml(field.label)}</p>` : ''}
+<h3 style="margin:${field.label ? 7 : 10}px 0 8px;font:600 19px/1.25 ${EMAIL_FONTS.serif};color:${EMAIL_PALETTE.ink}">${storyLink(paper, `color:${EMAIL_PALETTE.ink};text-decoration:none`)}</h3>
+<p style="margin:0;font:400 13px/1.5 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.secondary}">${escapeHtml(paperByline(paper))}</p>
+${meta ? `<p style="margin:5px 0 0;${monoStyle({ ...small, tracking: '0.04em' })}">${escapeHtml(meta)}</p>` : ''}
+<p style="margin:5px 0 0;${monoStyle({ ...small, tracking: '0.04em' })}">${escapeHtml(paperReason(paper))}</p>`;
+}
+
+// Two columns of briefs; a phone stacks them (the media query in the head).
+function renderBriefs(papers) {
+  const rows = [];
+  for (let index = 0; index < papers.length; index += 2) {
+    const [first, second] = papers.slice(index, index + 2);
+    if (index > 0) {
+      rows.push(`<tr><td colspan="2" style="border-top:1px solid ${EMAIL_PALETTE.rule};height:20px;font-size:0;line-height:0">&nbsp;</td></tr>`);
+    }
+    rows.push(`<tr>
+<td class="pt-col" width="50%" valign="top" style="width:50%;padding:0 16px 22px 0">${renderBrief(first)}</td>
+${second
+    ? `<td class="pt-col pt-col-second" width="50%" valign="top" style="width:50%;padding:0 0 22px 16px;border-left:1px solid ${EMAIL_PALETTE.rule}">${renderBrief(second)}</td>`
+    : '<td class="pt-col" width="50%" style="width:50%;font-size:0">&nbsp;</td>'}
+</tr>`);
+  }
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join('')}</table>`;
+}
+
+function editionIndex(papers) {
+  const fields = [...new Set(papers.map(paper => paper.area).filter(area => Object.hasOwn(FIELD_INKS, area || '')))];
+  return [
+    escapeHtml(EMAIL_COPY.paperCount(papers.length)),
+    ...fields.map(area => `<span style="color:${FIELD_INKS[area]}">${escapeHtml(CATEGORIES[area].label)}</span>`),
+  ].join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+}
+
+/**
+ * The weekly digest, set as the front page of a small newspaper in the app's
+ * own language: a serif nameplate over a double rule, the strongest paper as
+ * the lead story with an excerpt of its abstract, the rest as two columns of
+ * briefs, and the exploration pick boxed apart. Each paper wears its field's
+ * ink; one of no known field wears the brand ink and no field name.
+ *
+ * Tables and inline styles, because that is what mail clients render; the
+ * one stylesheet only stacks the columns on a phone.
+ */
+function renderDigest(subscription, papers, unsubscribeUrl, test, { now = Date.now() } = {}) {
+  const firstName = cleanText(subscription?.displayName, 160).split(' ')[0];
+  const edition = firstName ? EMAIL_COPY.editionFor(firstName) : EMAIL_COPY.edition;
+  const dateline = editionDate(now);
+  // collectDigestPapers ranks the followed papers first, the discovery last.
+  const lead = papers[0] || null;
+  const rest = papers.filter(paper => paper !== lead);
+  const others = [...rest.filter(paper => !isDiscovery(paper)), ...rest.filter(isDiscovery)];
+  const subject = test ? EMAIL_COPY.testSubject : digestSubject(lead, papers.length);
+  const preheader = test
+    ? EMAIL_COPY.testBody
+    : truncateAtWord(
+      others.map(paper => renderScientificText(paper.title)).join(' · ')
+        || renderScientificExcerpt(lead?.abstract).text
+        || EMAIL_COPY.standfirst,
+      DIGEST_PREHEADER_MAX_LENGTH,
+    );
+  const ink = EMAIL_PALETTE.ink;
+
+  const testNotice = test
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:22px 0 0">
+<p style="margin:0;${monoStyle({ color: ink })}">${escapeHtml(EMAIL_COPY.testKicker)}</p>
+<p style="margin:6px 0 0;font:400 15px/1.55 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.secondary}">${escapeHtml(EMAIL_COPY.testBody)}</p>
+</td></tr></table>`
+    : '';
+  const stories = lead
+    ? `${renderLeadStory(lead)}${others.length
+      ? `<h2 style="margin:0;padding:8px 0 18px;border-top:1px solid ${ink};${monoStyle({ size: 10.5, color: ink, tracking: '0.08em' })}">${escapeHtml(EMAIL_COPY.alsoInEdition)}</h2>${renderBriefs(others)}`
+      : ''}`
+    : `<p style="margin:0;padding:26px 0;font:400 15px/1.55 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.secondary}">${escapeHtml(EMAIL_COPY.empty)}</p>`;
+
+  const html = `<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
+<title>${escapeHtml(subject)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+@media (max-width:620px){
+.pt-shell{padding:22px 18px 26px!important}
+.pt-nameplate{font-size:34px!important}
+.pt-lead{font-size:26px!important}
+.pt-strip-cell{display:block!important;text-align:left!important;padding:0 0 6px!important}
+.pt-col{display:block!important;width:auto!important;padding:0 0 20px!important;border-left:0!important}
+.pt-col-second{border-top:1px solid ${EMAIL_PALETTE.rule}!important;padding-top:20px!important}
+}
+</style>
+</head><body style="margin:0;padding:0;background:${EMAIL_PALETTE.page};color:${ink};-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${escapeHtml(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${EMAIL_PALETTE.page}"><tr><td align="center" style="padding:28px 10px">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;background:${EMAIL_PALETTE.sheet};border:1px solid ${EMAIL_PALETTE.frame}"><tr><td class="pt-shell" style="padding:26px 36px 30px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid ${ink}"><tr>
+<td class="pt-strip-cell" style="padding:0 0 9px;${monoStyle({ size: 10.5, color: ink, tracking: '0.08em' })}">${escapeHtml(dateline)}</td>
+<td class="pt-strip-cell" align="right" style="padding:0 0 9px;${monoStyle({ size: 10.5, tracking: '0.08em' })}">${escapeHtml(edition)}</td>
+</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:22px 0 6px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="middle" style="padding-right:14px"><div aria-hidden="true" style="width:38px;height:38px;background:${EMAIL_PALETTE.brand};border-radius:3px;box-shadow:3px 3px 0 ${ink};text-align:center;font:600 16px/38px ${EMAIL_FONTS.mono};color:${ink}">PT</div></td>
+<td valign="middle"><h1 class="pt-nameplate" style="margin:0;font:600 48px/1 ${EMAIL_FONTS.serif};letter-spacing:-0.03em;color:${ink}">${escapeHtml(EMAIL_COPY.nameplate)}</h1></td>
+</tr></table>
+</td></tr>
+<tr><td align="center" style="padding:6px 0 14px;font:italic 400 15px/1.4 ${EMAIL_FONTS.serif};color:${EMAIL_PALETTE.secondary}">${escapeHtml(EMAIL_COPY.standfirst)}</td></tr>
+</table>
+<div style="border-top:3px double ${ink};height:0;line-height:0;font-size:0">&nbsp;</div>
+${papers.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid ${EMAIL_PALETTE.frame}"><tr><td align="center" style="padding:9px 0;${monoStyle({ size: 10.5, color: EMAIL_PALETTE.secondary, tracking: '0.08em' })}">${editionIndex(papers)}</td></tr></table>` : ''}
+${testNotice}
+${stories}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:3px double ${ink}">
+<tr><td style="padding:20px 0 0"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${ink};border-radius:3px"><a href="${PAPER_TOK_URL}" style="display:inline-block;padding:12px 20px;font:600 14px/1 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.sheet};text-decoration:none">${escapeHtml(EMAIL_COPY.openInbox)}</a></td></tr></table></td></tr>
+<tr><td style="padding:22px 0 0;${monoStyle({ size: 10.5, tracking: '0.05em' })}">${escapeHtml(EMAIL_COPY.colophon)}</td></tr>
+<tr><td style="padding:6px 0 0;font:400 12px/1.6 ${EMAIL_FONTS.sans};color:${EMAIL_PALETTE.tertiary}">${escapeHtml(EMAIL_COPY.footer)} <a href="${escapeHtml(unsubscribeUrl)}" style="color:${EMAIL_PALETTE.secondary};text-decoration:underline">${escapeHtml(EMAIL_COPY.unsubscribe)}</a>.</td></tr>
+</table>
+</td></tr></table>
+</td></tr></table>
+</body></html>`;
+
+  const storyText = (paper, { isLead = false } = {}) => {
+    const lines = [textKicker(paper), renderScientificText(paper.title)];
+    if (isLead) {
+      const excerpt = renderScientificExcerpt(paper.abstract).text;
+      if (excerpt) lines.push(excerpt);
+    }
+    lines.push(paperByline(paper, { lead: isLead }));
+    const meta = paperMeta(paper);
+    if (meta) lines.push(meta);
+    lines.push(paper.url || PAPER_TOK_URL);
+    return lines.join('\n');
+  };
+  const blocks = [
+    `${EMAIL_COPY.nameplate.toUpperCase()}\n${dateline} · ${edition}`,
+    ...(test ? [`${EMAIL_COPY.testKicker.toUpperCase()}\n${EMAIL_COPY.testBody}`] : []),
+    ...(lead ? [storyText(lead, { isLead: true })] : [EMAIL_COPY.empty]),
+    ...(others.length ? [EMAIL_COPY.alsoInEdition.toUpperCase(), ...others.map(paper => storyText(paper))] : []),
+    `${EMAIL_COPY.openInbox}: ${PAPER_TOK_URL}\n${EMAIL_COPY.unsubscribe}: ${unsubscribeUrl}`,
+  ];
+  return { html, text: blocks.join('\n\n'), subject };
 }
 
 // Deliberately the same shape as `fetchWithDeadline` in `report-api.js`, down
@@ -1801,7 +2176,7 @@ function buildDeliveryDraft(subscription, papers, provider, env, {
       email: subscription.email,
       displayName: subscription.displayName,
     },
-    content: renderDigest(subscription, papers, unsubscribeUrl, test),
+    content: renderDigest(subscription, papers, unsubscribeUrl, test, { now }),
     unsubscribeUrl,
     delivery: {
       kind: test ? 'test' : 'digest',
@@ -1998,22 +2373,101 @@ export async function handleEmailNotificationRequest(request, env, pathname) {
   throw new EmailNotificationError('EMAIL_METHOD_NOT_ALLOWED', 405);
 }
 
+// Every unsubscribe answer is a page, errors included, and all of them carry
+// these headers: the token is in the URL, so nothing may cache, frame or
+// refer it onwards.
+const UNSUBSCRIBE_PAGE_HEADERS = Object.freeze({
+  'content-type': 'text/html; charset=utf-8',
+  'cache-control': 'no-store',
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+});
+
+/**
+ * The page an unsubscribe link opens, set on the digest's own paper: its
+ * masthead in miniature over the double rule, a mono kicker, a serif headline,
+ * one sentence and an ink action. A browser page rather than an email, so one
+ * stylesheet carries what style attributes cannot (focus, hover, the phone
+ * size). The CSP admits nothing else: no script and no web fonts, so each
+ * voice falls back through its stack, as it does in most mail clients.
+ */
+function unsubscribePage(status, { title, body, action }) {
+  const { page, sheet, ink, inkHover, secondary, tertiary, frame, brand } = EMAIL_PALETTE;
+  const { serif, sans, mono } = EMAIL_FONTS;
+  const html = `<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light only">
+<title>${escapeHtml(title)} | PaperTok</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;padding:clamp(16px,9vh,88px) 16px 48px;background:${page};color:${ink};font:400 16px/1.55 ${sans}}
+.pt-sheet{max-width:520px;margin:0 auto;padding:26px 32px 32px;background:${sheet};border:1px solid ${frame}}
+.pt-masthead{display:flex;align-items:center;justify-content:center;gap:12px;padding:0 0 16px;border-bottom:3px double ${ink}}
+.pt-mark{flex:none;width:30px;height:30px;border-radius:3px;background:${brand};box-shadow:2px 2px 0 ${ink};font:600 13px/30px ${mono};text-align:center;color:${ink}}
+.pt-nameplate{margin:0;font:600 24px/1 ${serif};letter-spacing:-0.02em}
+.pt-kicker{margin:28px 0 0;font:600 11px/1.5 ${mono};letter-spacing:0.06em;text-transform:uppercase;color:${tertiary}}
+h1{margin:8px 0 12px;font:600 34px/1.12 ${serif};letter-spacing:-0.02em;text-wrap:balance}
+.pt-body{margin:0;color:${secondary};text-wrap:pretty}
+.pt-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-top:26px}
+.pt-actions form{margin:0}
+.pt-button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 16px;border:1px solid ${ink};border-radius:3px;background:${ink};color:${sheet};font:600 14px/1 ${sans};text-decoration:none;white-space:nowrap;cursor:pointer;-webkit-appearance:none;appearance:none}
+.pt-link{display:inline-flex;align-items:center;min-height:40px;margin:0 -4px;padding:0 4px;font:600 14px/1 ${sans};color:${ink};text-decoration:underline;text-underline-offset:3px}
+.pt-button:focus-visible,.pt-link:focus-visible{outline:2px solid ${ink};outline-offset:2px}
+@media (hover:hover) and (pointer:fine){.pt-button:hover{background:${inkHover}}.pt-link:hover{text-decoration-thickness:2px}}
+@media (prefers-reduced-motion:no-preference){.pt-button{transition:background-color 150ms ease-out,scale 150ms ease-out}.pt-button:active{scale:0.97}}
+@media (max-width:480px){.pt-sheet{padding:22px 18px 26px}h1{font-size:28px}}
+</style>
+</head><body>
+<div class="pt-sheet">
+<header class="pt-masthead"><span class="pt-mark" aria-hidden="true">PT</span><p class="pt-nameplate">${escapeHtml(EMAIL_COPY.nameplate)}</p></header>
+<main>
+<p class="pt-kicker">${escapeHtml(EMAIL_COPY.emailUpdates)}</p>
+<h1>${escapeHtml(title)}</h1>
+<p class="pt-body">${escapeHtml(body)}</p>
+<div class="pt-actions">${action}</div>
+</main>
+</div>
+</body></html>`;
+  return new Response(html, { status, headers: UNSUBSCRIBE_PAGE_HEADERS });
+}
+
+function pageButtonLink(href, label) {
+  return `<a class="pt-button" href="${href}">${escapeHtml(label)}</a>`;
+}
+
 export async function handleEmailUnsubscribe(request, env) {
   const requestUrl = new URL(request.url);
   // English-only: a legacy `lang` query parameter (e.g. `lang=es` in links from
   // older emails) and the Accept-Language header are ignored.
   const copy = EMAIL_COPY;
-  if (!env.NOTIFICATION_STORE) return new Response(copy.unavailable, { status: 503 });
+  if (!env.NOTIFICATION_STORE) {
+    return unsubscribePage(503, {
+      title: copy.unavailable,
+      body: copy.unavailableBody,
+      action: pageButtonLink(PAPER_TOK_URL, copy.returnToPaperTok),
+    });
+  }
+  // Already used, replaced by a newer email or cut short: the link cannot say
+  // which, so the page names the likely case and the way to the setting.
+  const invalidLinkPage = () => unsubscribePage(400, {
+    title: copy.invalidLink,
+    body: copy.invalidLinkBody,
+    action: pageButtonLink(PAPER_TOK_SETTINGS_URL, copy.openSettings),
+  });
   const token = cleanText(requestUrl.searchParams.get('token'), 100);
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(token)) {
-    return new Response(copy.invalidLink, { status: 400 });
+    return invalidLinkPage();
   }
   const uid = await env.NOTIFICATION_STORE.get(`${UNSUBSCRIBE_PREFIX}${token}`);
-  if (!uid) return new Response(copy.invalidLink, { status: 400 });
+  if (!uid) return invalidLinkPage();
   const subscription = await loadSubscriptionWithState(env, `${SUBSCRIPTION_PREFIX}${uid}`);
   if (!subscription || subscription.unsubscribeToken !== token) {
     await env.NOTIFICATION_STORE.delete(`${UNSUBSCRIBE_PREFIX}${token}`);
-    return new Response(copy.invalidLink, { status: 400 });
+    return invalidLinkPage();
   }
   if (request.method === 'POST') {
     await deleteSubscription(env, uid, subscription);
@@ -2022,18 +2476,10 @@ export async function handleEmailUnsubscribe(request, env) {
   const title = request.method === 'POST' ? copy.disabledTitle : copy.confirmTitle;
   const body = request.method === 'POST' ? copy.disabledBody : copy.confirmBody;
   const action = request.method === 'GET'
-    ? `<form method="post" action="${escapeHtml(requestUrl.pathname)}?token=${encodeURIComponent(token)}"><button type="submit" style="border:0;border-radius:8px;background:#8b5cf6;color:white;padding:12px 18px;font-weight:700;cursor:pointer">${escapeHtml(copy.confirmAction)}</button></form>`
-    : `<a href="${PAPER_TOK_URL}" style="color:#a98cf7">${escapeHtml(copy.returnToPaperTok)}</a>`;
-  return new Response(`<!doctype html><html lang="en"><head><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="background:#0c0b10;color:#f6f4fb;font-family:Arial,sans-serif;text-align:center;padding:80px 20px"><h1>${escapeHtml(title)}</h1><p style="color:#aaa3b6">${escapeHtml(body)}</p>${action}</body></html>`, {
-    status: 200,
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'no-store',
-      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-      'referrer-policy': 'no-referrer',
-      'x-content-type-options': 'nosniff',
-    },
-  });
+    ? `<form method="post" action="${escapeHtml(requestUrl.pathname)}?token=${encodeURIComponent(token)}"><button type="submit" class="pt-button">${escapeHtml(copy.confirmAction)}</button></form>
+<a class="pt-link" href="${PAPER_TOK_URL}">${escapeHtml(copy.returnToPaperTok)}</a>`
+    : pageButtonLink(PAPER_TOK_URL, copy.returnToPaperTok);
+  return unsubscribePage(200, { title, body, action });
 }
 
 export async function getEmailScheduleHealth(env, now = Date.now()) {
@@ -2183,15 +2629,13 @@ function isWeeklySourceFailureRetry(subscription, now, dayStart) {
     && failedAt <= now.getTime();
 }
 
+// Monday, whatever frequency the record stored: see DIGEST_FREQUENCY.
 function isSubscriptionCalendarDue(subscription, now) {
   if (!subscription?.enabled) return false;
   const lastSent = Date.parse(subscription.lastSentAt || 0);
   const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  if (subscription.frequency === 'weekly') {
-    return (now.getUTCDay() === 1 && (!lastSent || lastSent < dayStart))
-      || isWeeklySourceFailureRetry(subscription, now, dayStart);
-  }
-  return !lastSent || lastSent < dayStart;
+  return (now.getUTCDay() === 1 && (!lastSent || lastSent < dayStart))
+    || isWeeklySourceFailureRetry(subscription, now, dayStart);
 }
 
 function isSubscriptionDue(subscription, now) {
@@ -2207,10 +2651,7 @@ function isSubscriptionDue(subscription, now) {
 }
 
 function shouldInspectPreviousDay(subscription, now) {
-  return (
-    isSubscriptionCalendarDue(subscription, now)
-    || (subscription?.frequency === 'weekly' && [2, 3].includes(now.getUTCDay()))
-  );
+  return isSubscriptionCalendarDue(subscription, now) || [2, 3].includes(now.getUTCDay());
 }
 
 function allowsNewScheduledDelivery(now) {
@@ -2562,6 +3003,7 @@ export const emailNotificationInternals = {
   resendSendErrorCode,
   renderScientificHtml,
   renderDigest,
+  fieldInks: FIELD_INKS,
   readBoundedJson,
   allowsNewScheduledDelivery,
   digestFollowsForWindow,

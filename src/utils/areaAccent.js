@@ -16,7 +16,9 @@
  * matching the area whose subcategories share that prefix is what stops a
  * `cs.NE` paper from falling through to the brand ink.
  */
-import { CATEGORIES, getAreaKeyFromTopicName } from '../data/categories.js';
+// The taxonomy, not `categories.js`: the Worker imports this file to ink the
+// email digest, and `categories.js` attaches the React icons.
+import { CATEGORIES, getAreaKeyFromTopicName } from '../data/categoryTaxonomy.js';
 
 const FALLBACK = 'var(--gradient-brand)';
 

@@ -1,9 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildNotificationPreferencesPayload,
   serializeFollowForNotifications,
   serializeUpdateForNotifications,
 } from './emailNotificationService.js';
+
+test('a preview names its paper\'s field the way the card does, or not at all', () => {
+  // The digest inks each paper with its field, so it needs the card's answer.
+  assert.equal(serializeUpdateForNotifications({ id: 'a', title: 'A', primaryCategory: 'cs.LG' }).area, 'cs');
+  assert.equal(serializeUpdateForNotifications({
+    id: 'b',
+    title: 'B',
+    primaryTopic: { field: { id: 'https://openalex.org/fields/26' } },
+  }).area, 'math');
+  assert.equal('area' in serializeUpdateForNotifications({ id: 'c', title: 'C' }), false);
+});
+
+test('asks the Worker for the weekly digest whatever the saved preference says', () => {
+  // The frontend can ship before the Worker, whose old default is daily.
+  const payload = buildNotificationPreferencesPayload({ enabled: true, frequency: 'daily', maxPapers: 10 });
+  assert.equal(payload.frequency, 'weekly');
+  assert.equal(payload.maxPapers, 10);
+  assert.equal(buildNotificationPreferencesPayload({ enabled: true }).frequency, 'weekly');
+});
 
 test('serializes only the follow metadata required by notification digests', () => {
   assert.deepEqual(serializeFollowForNotifications({

@@ -102,6 +102,8 @@ diversity.
   avoiding the indexing delay for newly submitted physics and mathematics papers. Within one
   cron run, identical OpenAlex requests are sent once and shared between readers before any
   per-reader filtering (see `worker/README.md`).
+- The digest is weekly for every subscriber (Mondays) and is laid out as *The PaperTok Weekly*:
+  a lead story with its abstract excerpt and field-inked briefs (worker/README.md).
 - AI explanations bound PDF acquisition and provider retries within the browser request
   deadline, while provider JSON is normalized before LaTeX-aware rendering.
 - Every AI route answers through NaN Builders (`AI_PROVIDER = "nan"`, DeepSeek V4 Flash,

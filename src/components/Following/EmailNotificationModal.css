@@ -115,35 +115,7 @@
   transition: opacity 160ms ease;
 }
 .email-notification-options.is-disabled { opacity: 0.45; }
-.email-notification-options fieldset { margin: 0; padding: 0; border: 0; }
-.email-notification-options legend { margin-bottom: 9px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
 
-.email-notification-segments {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
-}
-
-.email-notification-segments button {
-  min-height: 36px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: transparent;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.email-notification-segments button[data-checked] {
-  border-color: var(--border-default);
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-}
-
-.email-notification-count { margin-top: 18px; }
 .email-notification-count-trigger {
   min-width: 72px;
   height: 38px;

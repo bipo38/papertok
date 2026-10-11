@@ -17,7 +17,7 @@ import { getFollowingSignature } from '../utils/followingUpdates';
 
 const DEFAULT_PREFERENCES = {
   enabled: false,
-  frequency: 'daily',
+  frequency: 'weekly',
   maxPapers: 5,
   language: 'en',
   email: '',
