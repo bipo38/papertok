@@ -137,3 +137,13 @@ export function requireHandle(value) {
   if (!result.valid) throw new InvalidHandleError(result.code);
   return result.handle;
 }
+
+/** What to tell the reader for each `inspectHandle` code. */
+export const HANDLE_ERROR_MESSAGES = {
+  [HANDLE_ERRORS.empty]: 'Choose a handle.',
+  [HANDLE_ERRORS.tooShort]: 'A handle needs at least 3 characters.',
+  [HANDLE_ERRORS.tooLong]: `A handle can have at most ${HANDLE_MAX_LENGTH} characters.`,
+  [HANDLE_ERRORS.charset]: 'Use lowercase letters, numbers and underscores only.',
+  [HANDLE_ERRORS.numericOnly]: 'A handle needs at least one letter.',
+  [HANDLE_ERRORS.reserved]: 'That handle is reserved.',
+};

@@ -7,24 +7,18 @@ import { readFile } from 'node:fs/promises';
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('SOURCE: the onboarding refuses to leave the categories step, or to finish, over the cap', async () => {
+test('SOURCE: the onboarding refuses to continue, or to finish, over the cap', async () => {
   const code = stripComments(await read('./OnboardingFlow.jsx'));
   assert.match(code, /import \{ USER_PREFERENCES_MAX \} from '\.\.\/\.\.\/utils\/accountOnboarding\.js';/);
-  assert.match(code, /const overCap = selectedSubcategories\.size > USER_PREFERENCES_MAX;/);
-  assert.match(code, /else if \(step === 2 && selectedSubcategories\.size > 0 && !overCap\)/, 'Next on the categories step is gated');
-  // Anchored on the preceding `||`: the same clause text also appears in the
-  // `handleNext` line asserted just above, preceded by `else if ` there
-  // instead. An unanchored match on `canProceed` alone would still pass with
-  // `!overCap` removed from `canProceed`, as long as `handleNext`'s own guard
-  // survived — the assertion would prove nothing about `canProceed` at all.
-  assert.match(code, /\|\|\s*\(step === 2 && selectedSubcategories\.size > 0 && !overCap\)/, 'and so is canProceed');
-  assert.match(code, /\(step === 4 && !overCap && \(/, 'Start exploring is gated too');
-  assert.match(code, /At most \$\{USER_PREFERENCES_MAX\} categories: drop \$\{selectedSubcategories\.size - USER_PREFERENCES_MAX\}\./, 'the hint says how many to drop');
-  // Step 3 has its own finish button in the `existingProfile` branch, which
-  // calls handleFinish directly and never consults canProceed. The cap closes
-  // at the function too, so no entry point can finish over it.
-  assert.match(code, /const handleFinish = async \(\) => \{\s*if \(overCap\) return;/, 'handleFinish refuses over the cap whatever called it');
-  assert.match(code, /onClick=\{handleFinish\}\s*disabled=\{saving \|\| overCap\}/, 'the step-3 finish button is disabled over the cap');
+  assert.match(code, /const overCap = picked\.size > USER_PREFERENCES_MAX;/);
+  assert.match(code, /const canContinue = picked\.size > 0 && !overCap;/, 'Continue is gated');
+  // The stepper's "ahead" step follows the same rule as Continue.
+  assert.match(code, /const reachable = target < step \|\| \(target === 2 && canContinue\);/);
+  assert.match(code, /At most \$\{USER_PREFERENCES_MAX\} categories: drop \$\{picked\.size - USER_PREFERENCES_MAX\}\./, 'the hint says how many to drop');
+  // Finish can be the step-1 button too (an account with a profile already),
+  // so the cap closes at the function as well as at the button.
+  assert.match(code, /const handleFinish = async \(\) => \{\s*if \(overCap \|\| saving\) return;/, 'handleFinish refuses over the cap whatever called it');
+  assert.match(code, /disabled=\{saving \|\| overCap \|\| \(step === 1 && !canContinue\)\}\s*onClick=\{handleFinish\}/, 'the finish button is disabled over the cap');
 });
 
 test('SOURCE: the settings picker refuses to save over the cap, before the write', async () => {
