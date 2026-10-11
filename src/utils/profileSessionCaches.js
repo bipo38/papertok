@@ -6,7 +6,7 @@ import { profileIsPublic } from '../services/userProfileService.js';
  *
  * They live here rather than inside one component because two screens read the
  * same documents: `/profile` (PublicProfilePage in owner mode) and
- * `/settings/profile` (ProfilePage). Moving between them is the single most
+ * `/settings/profile` and `/settings/privacy` (useProfileEditor). Moving between them is the single most
  * common navigation in this part of the app, and with a cache per component
  * each crossing paid for the same read again and sat on a spinner while it
  * happened.

@@ -23,7 +23,7 @@ import { Drawer, DrawerBody, DrawerClose, DrawerContent, DrawerHandle, DrawerTit
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 import VisibilityList from '../Profile/VisibilityList.jsx';
 import RingMeter from './RingMeter.jsx';
-import '../Profile/ProfilePage.css';
+import '../Profile/ProfileEditor.css';
 import './OnboardingFlow.css';
 
 

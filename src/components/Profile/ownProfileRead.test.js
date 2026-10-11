@@ -25,7 +25,7 @@ const profileEffect = jsx => jsx.match(
 );
 
 test('the editor reads its profile with authority, so a stall is retried instead of settled', async () => {
-  const jsx = await read('./ProfilePage.jsx');
+  const jsx = await read('./useProfileEditor.js');
   assert.match(jsx, /readConfirmedOwnUserProfile,/, 'the confirmed sibling is imported');
   const effect = profileEffect(jsx);
   assert.ok(effect, 'the load still goes through patientRead and still aborts on cleanup');
@@ -39,7 +39,7 @@ test('the editor reads its profile with authority, so a stall is retried instead
 });
 
 test('the wait for the profile has to have waited before it says so', async () => {
-  const jsx = await read('./ProfilePage.jsx');
+  const jsx = await read('./useProfileEditor.js');
   assert.match(jsx, /import \{[\s\S]*?slowNoticeStatus[\s\S]*?\} from '\.\.\/\.\.\/utils\/boundedRead\.js';/);
   assert.match(jsx, /const startedAt = Date\.now\(\);/, 'the effect stamps when the read began');
   const effect = profileEffect(jsx)[0];
@@ -54,7 +54,7 @@ test('the wait for the profile has to have waited before it says so', async () =
 });
 
 test('only a settled screen writes through to the shared profile cache', async () => {
-  const jsx = await read('./ProfilePage.jsx');
+  const jsx = await read('./useProfileEditor.js');
   const writeThrough = jsx.match(
     /if \(!user\?\.uid[\s\S]{0,120}?\) return;\s*rememberOwnProfile\(user\.uid, profile\);/,
   );

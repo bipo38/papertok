@@ -21,4 +21,8 @@ test('a choice that saves on the spot waits for a press, not for arrow keys', as
   assert.match(list, /onValueChange=\{next => \{ if \(!commitOnPress\) onChange\(next\); \}\}/);
   assert.match(list, /const press = commitOnPress \? \(\) => \{ if \(id !== value\) onChange\(id\); \} : undefined;/);
   assert.match(list, /render=\{<button type="button" className="visibility-list-row" onClick=\{press\} \/>\}/);
+  const editor = stripComments(await readFile(new URL('./ProfileEditor.jsx', import.meta.url), 'utf8'));
+  const privacyList = editor.match(/<VisibilityList[\s\S]*?\/>/)[0];
+  assert.match(privacyList, /commitOnPress=\{!visibility\.isNew\}/);
+  assert.doesNotMatch(privacyList, /disabled=/);
 });

@@ -133,7 +133,7 @@ const COPY = {
   needProfileCta: { en: 'Create my profile' },
   privateTitle: { en: 'Your profile is private' },
   privateBody: {
-    en: 'Commenting is a public act: your handle stands next to what you write. To comment, make your profile public from the profile editor.',
+    en: 'Commenting is a public act: your handle stands next to what you write. To comment, make your profile public in your privacy settings.',
   },
   privateCta: { en: 'Review my privacy' },
   frozen: { en: 'Comments are temporarily paused across the app.' },
@@ -1244,7 +1244,8 @@ export default function CommentsSheet({ paper, isAuthenticated, onClose, onAuthR
           {composerState === 'private' && (
             <div className="comments-gate">
               <p><strong>{text(COPY.privateTitle)}.</strong> {text(COPY.privateBody)}</p>
-              <Button variant="outline" render={<Link to="/settings/profile" onClick={requestClose} />}>
+              {/* Who can see the profile lives on the Privacy page now. */}
+              <Button variant="outline" render={<Link to="/settings/privacy" onClick={requestClose} />}>
                 {text(COPY.privateCta)}
               </Button>
             </div>

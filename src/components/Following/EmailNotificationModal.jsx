@@ -141,7 +141,7 @@ export default function EmailNotificationModal({ isOpen, onClose }) {
         closeLabel={'Close'}
       >
         <header>
-          <div className="email-notification-icon"><Envelope size={20} aria-hidden="true" /></div>
+          <div className={`email-notification-icon${!loading && !health.available ? ' is-down' : ''}`}><Envelope size={20} aria-hidden="true" /></div>
           <div>
             <DialogTitle>{'Email updates'}</DialogTitle>
             <DialogDescription>{'Receive a weekly digest even when PaperTok is closed.'}</DialogDescription>

@@ -9,19 +9,31 @@ const LABELS = {
   '/following': 'Following',
   '/search': 'Search',
   '/profile': 'My profile',
-  // SettingsPage titles and headings itself "Settings" (SettingsPage.jsx), so
-  // the announcement must call the page what the page calls itself.
+  // Each settings page titles itself "<page> · Settings" (SettingsPage.jsx),
+  // so the announcement calls the page what the page calls itself.
   '/settings': 'Settings',
-  '/settings/profile': 'Edit profile',
+  '/settings/profile': 'Profile & account · Settings',
+  '/settings/discovery': 'Discovery · Settings',
+  '/settings/reading': 'Reading & AI · Settings',
+  '/settings/notifications': 'Notifications · Settings',
+  '/settings/privacy': 'Privacy · Settings',
   '/settings/following': 'Following settings',
   '/settings/comments': 'My comments',
   '/login': 'Sign in',
   '/onboarding': 'Welcome',
 }
 
-// These set document.title on their own (SettingsPage, ProfilePage,
+// These set document.title on their own (the SettingsPage pages,
 // PublicProfilePage in selfMode); the announcer still announces them.
-const SELF_TITLED = new Set(['/settings', '/settings/profile', '/profile'])
+const SELF_TITLED = new Set([
+  '/settings',
+  '/settings/profile',
+  '/settings/discovery',
+  '/settings/reading',
+  '/settings/notifications',
+  '/settings/privacy',
+  '/profile',
+])
 
 function normalize(pathname) {
   return pathname === '/' ? '/' : pathname.replace(/\/+$/, '')

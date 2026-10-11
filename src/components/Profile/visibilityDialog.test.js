@@ -40,13 +40,14 @@ test('the two visibility cards are one Base UI radio group styled off data-check
 });
 
 test('the editor draws its switches, fields and pin toggles from the shared primitives', async () => {
-  const jsx = await read('./ProfilePage.jsx');
+  const jsx = await read('./ProfileEditor.jsx');
   for (const name of ['Input', 'Label', 'Switch', 'Textarea', 'Toggle']) {
-    assert.match(jsx, new RegExp(`import \\{ ${name} \\} from '\\.\\./ui/${name.toLowerCase()}\\.jsx'`), `ProfilePage no longer imports ${name}`);
+    assert.match(jsx, new RegExp(`import \\{ ${name} \\} from '\\.\\./ui/${name.toLowerCase()}\\.jsx'`), `ProfileEditor no longer imports ${name}`);
   }
   assert.doesNotMatch(jsx, /type="checkbox"|role="switch"|aria-pressed=/, 'a hand-rolled control came back');
-  assert.equal((jsx.match(/<Switch\b/g) ?? []).length, 3);
-  assert.equal((jsx.match(/<Label className="profile-switch">/g) ?? []).length, 3, 'each switch is named by the label that wraps it');
+  assert.equal((jsx.match(/<Switch\b/g) ?? []).length, 2);
+  assert.equal((jsx.match(/<Label className="profile-switch">/g) ?? []).length, 2, 'each switch is named by the label that wraps it');
+  assert.match(jsx, /<VisibilityList\b/);
   // Field associations survive the swap.
   assert.match(jsx, /<Input\s+id="profile-handle"[\s\S]*?aria-invalid=\{handleError \? 'true' : undefined\}\s*aria-describedby="profile-handle-hint"/);
   assert.match(jsx, /<Label htmlFor="profile-handle">/);
@@ -56,6 +57,6 @@ test('the editor draws its switches, fields and pin toggles from the shared prim
   // The pin toggles keep their pressed state through the Toggle primitive.
   assert.match(jsx, /<Toggle[\s\S]*?pressed=\{attributed\}/);
   assert.match(jsx, /<Toggle[\s\S]*?pressed=\{isPinned\}/);
-  const css = await read('./ProfilePage.css');
+  const css = await read('./ProfileEditor.css');
   assert.doesNotMatch(css, /profile-switch-track|profile-switch-thumb|\.profile-switch input/);
 });

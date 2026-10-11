@@ -187,8 +187,8 @@ test('SOURCE: the warm-up asks for an absence the server has confirmed', async (
 });
 
 test('SOURCE: unpublishing forgets the profile on this device, not only in the session', async () => {
-  const source = await readFile(new URL('../components/Profile/ProfilePage.jsx', import.meta.url), 'utf8');
-  // Comments are prose, not code: ProfilePage.jsx carries heavy explanatory
+  const source = await readFile(new URL('../components/Profile/useProfileEditor.js', import.meta.url), 'utf8');
+  // Comments are prose, not code: useProfileEditor.js carries heavy explanatory
   // comments elsewhere in the file, and a decoy reproducing this exact pair
   // of calls must never make this test see a device-copy clear that is not
   // really there. Strip them first, the same way analyticsPageviews.test.js

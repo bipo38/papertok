@@ -28,6 +28,13 @@ test('the public photo mirror is bounded and a copy that did not land is not rep
     1,
     'every mirror goes through the bounded helper',
   );
-  const outcomes = src.match(/const mirrored = await mirrorPublicPhoto\([\s\S]*?\);\s*setPhotoFeedback\(mirrored\s*\?[\s\S]*?:\s*\{ tone: 'error', text: copy\.photoPublicPending \}\);/g) || [];
+  // One reporter for both outcomes: a public copy that did not land is an
+  // error toast, never the success.
+  const reporter = src.match(/const reportPhoto = \(mirrored, done\) => notify\([\s\S]*?\);/);
+  assert.ok(reporter, 'reportPhoto is gone or reshaped');
+  assert.match(reporter[0], /mirrored \? 'success' : 'error'/);
+  assert.match(reporter[0], /mirrored \? done : copy\.photoPublicPending/);
+  const outcomes = src.match(/const mirrored = publicPhotoHidden\s*\|\|\s*await mirrorPublicPhoto\([\s\S]*?\);\s*reportPhoto\(mirrored, /g) || [];
   assert.equal(outcomes.length, 2, 'both the upload and the restore say when the public copy is behind');
+  assert.match(src, /const publicPhotoHidden = editor\.read\.status === 'ready' && !editor\.form\.showPhoto;/);
 });

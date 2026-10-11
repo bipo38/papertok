@@ -46,7 +46,7 @@ export default function FollowingSettingsPage() {
   // returns to whichever one it was. The fallback covers a direct URL load.
   const goBack = () => {
     if (location.key !== 'default') navigate(-1);
-    else navigate('/settings');
+    else navigate('/settings/discovery');
   };
   const { language, locale } = useLanguage();
   const {

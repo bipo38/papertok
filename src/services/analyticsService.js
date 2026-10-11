@@ -92,8 +92,12 @@ const STATIC_ANALYTICS_PATHS = new Set([
   '/search',
   '/settings',
   '/settings/comments',
+  '/settings/discovery',
   '/settings/following',
+  '/settings/notifications',
+  '/settings/privacy',
   '/settings/profile',
+  '/settings/reading',
 ]);
 const EXPLORER_TYPES = new Set(['author', 'institution', 'project', 'topic']);
 const PUBLIC_ANALYTICS_ENTITY_TYPES = new Set([
