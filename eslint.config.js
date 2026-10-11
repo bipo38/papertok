@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // Worktrees live in `.claude/worktrees/`: full checkouts that git ignores,
   // but ESLint does not read .gitignore and linted them from the main tree.
-  globalIgnores(['dist', '.wrangler', '.claude/**', 'scripts/diagnostics/**', 'video/**']),
+  globalIgnores(['dist', '.wrangler', '.claude/**', 'scripts/diagnostics/**']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
