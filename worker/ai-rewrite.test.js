@@ -173,6 +173,39 @@ test('stops at the section cap', () => {
   assert.equal(emitted.length, 14);
 });
 
+/**
+ * The cap is a cut, and a cut nobody counts is invisible. On 2026-10-06 DeepSeek
+ * wrote more than fourteen section lines for a fifteen-page paper: the assembler
+ * kept fourteen methods subsections, dropped Results and Conclusion, and nothing
+ * after it could tell.
+ */
+test('counts the parseable lines it drops past the section cap, and only those', () => {
+  const assembler = createSectionAssembler();
+  const line = text => JSON.stringify({ paragraphs: [text] });
+  const kept = assembler.push([
+    ...Array.from({ length: 14 }, (_, index) => line(`Section ${index}.`)),
+    // Past the cap, but not a section: there was nothing to lose.
+    '{ this is not json',
+    line('Results.'),
+    '',
+  ].join('\n'));
+  // The last line usually arrives without its newline, and is lost all the same.
+  assembler.push(line('Conclusion.'));
+
+  assert.equal(kept.length, 14);
+  assert.deepEqual(assembler.flush(), []);
+  assert.equal(assembler.dropped, 2);
+});
+
+test('a rewrite that fills the cap exactly drops nothing', () => {
+  const assembler = createSectionAssembler();
+  const lines = Array.from({ length: 14 }, (_, index) => JSON.stringify({ paragraphs: [`Section ${index}.`] }));
+  // The fourteenth arrives through `flush`, which is where an off-by-one would cut it.
+  const kept = assembler.push(lines.join('\n')).concat(assembler.flush());
+  assert.equal(kept.length, 14);
+  assert.equal(assembler.dropped, 0);
+});
+
 test('extracts a text delta from an SSE data line', () => {
   const line = `data: ${JSON.stringify({
     candidates: [{ content: { parts: [{ text: 'partial ' }, { text: 'text' }] } }],
@@ -302,7 +335,7 @@ test('salvages sections from a pretty-printed JSON array', () => {
   const streamed = assembler.push(raw).concat(assembler.flush());
   assert.equal(streamed.length, 0, 'line parsing cannot handle a formatted array');
 
-  const salvaged = salvageSections(raw);
+  const { sections: salvaged } = salvageSections(raw);
   assert.equal(salvaged.length, 2);
   assert.deepEqual(salvaged.map(section => section.kind), ['intro', 'results']);
   assert.deepEqual(salvaged.map(section => section.id), ['s0', 's1']);
@@ -310,33 +343,42 @@ test('salvages sections from a pretty-printed JSON array', () => {
 
 test('salvages from output wrapped in Markdown fences', () => {
   const raw = ['```json', JSON.stringify({ paragraphs: ['Fenced but fine.'] }), '```'].join('\n');
-  const salvaged = salvageSections(raw);
+  const { sections: salvaged } = salvageSections(raw);
   assert.equal(salvaged.length, 1);
   assert.equal(salvaged[0].paragraphs[0], 'Fenced but fine.');
 });
 
 test('salvage is not fooled by braces inside strings', () => {
   const raw = JSON.stringify({ paragraphs: ['A set {a, b} and a brace } here.'] }, null, 2);
-  const salvaged = salvageSections(raw);
+  const { sections: salvaged } = salvageSections(raw);
   assert.equal(salvaged.length, 1);
   assert.equal(salvaged[0].paragraphs[0], 'A set {a, b} and a brace } here.');
 });
 
 test('salvage handles escaped quotes and LaTeX', () => {
   const raw = '{\n  "paragraphs": ["The \\"open\\" case with $x_1$."]\n}';
-  const salvaged = salvageSections(raw);
+  const { sections: salvaged } = salvageSections(raw);
   assert.equal(salvaged.length, 1);
   assert.match(salvaged[0].paragraphs[0], /\$x_1\$/);
 });
 
 test('salvage returns nothing for prose with no objects', () => {
-  assert.deepEqual(salvageSections('I cannot read this PDF, sorry.'), []);
-  assert.deepEqual(salvageSections(''), []);
+  assert.deepEqual(salvageSections('I cannot read this PDF, sorry.'), { sections: [], dropped: 0 });
+  assert.deepEqual(salvageSections(''), { sections: [], dropped: 0 });
 });
 
 test('salvage respects the section cap', () => {
   const raw = Array.from({ length: 30 }, () => JSON.stringify({ paragraphs: ['x'] })).join(',\n');
-  assert.equal(salvageSections(raw).length, 14);
+  assert.equal(salvageSections(raw).sections.length, 14);
+});
+
+test('salvage counts the sections it drops past the cap, and only those', () => {
+  const objects = Array.from({ length: 16 }, (_, index) => ({ paragraphs: [`Section ${index}.`] }));
+  // Past the cap, but not a section: there was nothing to lose.
+  objects.splice(15, 0, { heading: 'No paragraphs' });
+  const { sections, dropped } = salvageSections(JSON.stringify(objects, null, 2));
+  assert.equal(sections.length, 14);
+  assert.equal(dropped, 2);
 });
 
 /** A provider body that hands over one chunk at a time, like a real socket. */
@@ -403,7 +445,7 @@ test('reports the finish reason and raw text when nothing parses', async () => {
 test('an empty provider stream ends without sections', async () => {
   const events = [];
   for await (const event of streamModelSections(fakeSseBody([]))) events.push(event);
-  assert.deepEqual(events, [{ type: 'end', rawText: '', finishReason: '', firstTextAtMs: 0 }]);
+  assert.deepEqual(events, [{ type: 'end', rawText: '', finishReason: '', firstTextAtMs: 0, droppedSections: 0 }]);
 });
 
 /* ============================================================
@@ -841,6 +883,16 @@ test('the finish reason decides whether the rewrite is kept, and as what', () =>
   // guessing wrong in that direction parks half a paper in KV for thirty days.
   assert.equal(cacheableFinish(''), null);
   assert.equal(cacheableFinish(undefined), null);
+});
+
+test('sections dropped past the cap turn a finished rewrite into a truncated one', () => {
+  assert.equal(cacheableFinish('STOP', 0), 'complete');
+  assert.equal(cacheableFinish('STOP', 2), 'truncated');
+  assert.equal(cacheableFinish('MAX_TOKENS', 2), 'truncated');
+  // The cap does not make an attempt-specific stop worth keeping: a filter that
+  // fired after the overflow is still a filter, and still about this attempt.
+  assert.equal(cacheableFinish('SAFETY', 2), null);
+  assert.equal(cacheableFinish('', 2), null);
 });
 
 test('does not cache a rewrite a filter cut short, and says so on the wire', async () => {
@@ -1519,6 +1571,106 @@ test('a NaN rewrite cut at the token ceiling is kept as the half paper it is', a
   assert.equal(done.type, 'done');
   assert.equal(done.truncated, true);
   assert.equal(done.finishReason, 'MAX_TOKENS');
+  assert.equal(JSON.parse([...store.entries.values()][0].value).truncated, true);
+});
+
+/**
+ * A NaN rewrite of `count` section lines that finishes normally, the last two
+ * being Results and Conclusion. At sixteen it is the 2026-10-06 overflow:
+ * fourteen methods subsections fill the cap, and the two sections that say
+ * what the paper found fall past it under a `finish_reason` of `stop`.
+ */
+const nanRewriteOf = count => sseResponse([
+  ...Array.from({ length: count - 2 }, (_, index) => chunkFrame(sectionLine('methods', `Subsection ${index + 1}.`))),
+  chunkFrame(sectionLine('results', 'It worked.')),
+  chunkFrame(sectionLine('conclusion', 'It matters.')),
+  chunkFrame(null, 'stop'),
+  'data: [DONE]\n\n',
+]);
+
+test('a rewrite that overflows the section cap ends truncated, not complete', async () => {
+  const { events } = await runRewrite({ provider: async () => nanRewriteOf(16) }, nanEnv({
+    REQUEST_QUOTA_LEDGER: countingQuotaLedger(newLedgerState()),
+  }));
+
+  const sections = events.filter(event => event.type === 'section');
+  assert.equal(sections.length, 14);
+  assert.equal(sections.at(-1).kind, 'methods');
+  const done = events.at(-1);
+  assert.equal(done.type, 'done');
+  assert.equal(done.sectionCount, 14);
+  // The model said `stop`, which is what kept this silent: the cut is ours, so
+  // the reason on the wire has to be ours as well.
+  assert.equal(done.truncated, true);
+  assert.equal(done.finishReason, 'SECTION_CAP');
+});
+
+test('a rewrite that overflowed the cap is kept, and replayed, as the half paper it is', async () => {
+  const state = newLedgerState();
+  const store = fakeRewriteStore();
+  const env = nanEnv({ AI_REWRITE_STORE: store, REQUEST_QUOTA_LEDGER: countingQuotaLedger(state) });
+
+  await runRewrite({ provider: async () => nanRewriteOf(16) }, env);
+  assert.equal(store.entries.size, 1);
+  assert.equal(JSON.parse([...store.entries.values()][0].value).truncated, true);
+
+  const { events } = await runRewrite({
+    pdf: async () => { throw new Error('A cache hit must not download the PDF'); },
+    provider: async () => { throw new Error('A cache hit must not reach the model'); },
+  }, env);
+  assert.equal(events[0].cached, true);
+  // The incident's real cost was the replay: thirty days of the half served as
+  // the whole paper.
+  assert.equal(events.at(-1).truncated, true);
+  assert.equal(state.reserve, 1);
+});
+
+test('the log line counts the sections the cap dropped', async () => {
+  const { lines } = await runRewriteCapturingLogs({ provider: async () => nanRewriteOf(16) }, nanEnv({
+    REQUEST_QUOTA_LEDGER: countingQuotaLedger(newLedgerState()),
+  }));
+
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].sections, 14);
+  assert.equal(lines[0].droppedSections, 2);
+  // The model's own reason stays as it said it: "it finished, and we cut it" is
+  // the diagnosis, and it takes both fields to read it.
+  assert.equal(lines[0].finishReason, 'STOP');
+});
+
+test('a rewrite that fills the cap exactly is complete', async () => {
+  const store = fakeRewriteStore();
+  const { events, lines } = await runRewriteCapturingLogs({ provider: async () => nanRewriteOf(14) }, nanEnv({
+    AI_REWRITE_STORE: store,
+    REQUEST_QUOTA_LEDGER: countingQuotaLedger(newLedgerState()),
+  }));
+
+  // Fourteen sections is the cap reached, not the cap overflowed: deciding by the
+  // section count instead of the dropped lines would flag every paper that uses
+  // all fourteen.
+  assert.equal(events.at(-1).sectionCount, 14);
+  assert.equal(events.at(-1).truncated, undefined);
+  assert.equal(JSON.parse([...store.entries.values()][0].value).truncated, false);
+  assert.equal(lines[0].droppedSections, 0);
+});
+
+test('sections the salvage drops past the cap truncate the rewrite as well', async () => {
+  // A pretty-printed array has no line that parses on its own, so every section
+  // reaches the reader through the salvage — and so does the overflow.
+  const array = JSON.stringify(
+    Array.from({ length: 16 }, (_, index) => ({ kind: 'methods', paragraphs: [`Part ${index + 1}.`] })),
+    null,
+    2,
+  );
+  const store = fakeRewriteStore();
+  const { events, lines } = await runRewriteCapturingLogs({
+    provider: async () => sseResponse([chunkFrame(array), chunkFrame(null, 'stop')]),
+  }, nanEnv({ AI_REWRITE_STORE: store, REQUEST_QUOTA_LEDGER: countingQuotaLedger(newLedgerState()) }));
+
+  assert.equal(events.filter(event => event.type === 'section').length, 14);
+  assert.equal(events.at(-1).truncated, true);
+  assert.equal(events.at(-1).finishReason, 'SECTION_CAP');
+  assert.equal(lines[0].droppedSections, 2);
   assert.equal(JSON.parse([...store.entries.values()][0].value).truncated, true);
 });
 

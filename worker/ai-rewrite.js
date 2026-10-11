@@ -265,10 +265,15 @@ export function parseRewriteSectionLine(line, index) {
  * this scans the accumulated text for balanced top-level objects.
  *
  * Only used after the stream ends, so it costs nothing in the normal path.
+ *
+ * Returns the sections it kept and how many more parsed past the cap, which
+ * is the same count the line reader keeps: an overflow must not go quiet just
+ * because the model also ignored the format.
  */
 export function salvageSections(rawText) {
   const text = String(rawText || '');
   const sections = [];
+  let dropped = 0;
   let depth = 0;
   let start = -1;
   let inString = false;
@@ -297,24 +302,38 @@ export function salvageSections(rawText) {
       depth -= 1;
       if (depth === 0 && start !== -1) {
         const section = parseRewriteSectionLine(text.slice(start, index + 1), sections.length);
-        if (section) sections.push(section);
+        if (section && sections.length < MAX_SECTIONS) sections.push(section);
+        else if (section) dropped += 1;
         start = -1;
-        if (sections.length >= MAX_SECTIONS) break;
       }
       if (depth < 0) depth = 0;
     }
   }
 
-  return sections;
+  return { sections, dropped };
 }
 
 /**
  * Incremental JSON Lines reader. Holds a partial trailing line between calls
  * so a section is only emitted once its line is closed.
+ *
+ * Past `MAX_SECTIONS` it keeps parsing, and counts in `dropped` every line that
+ * would have been a section. That count is the only trace of the cut.
  */
 export function createSectionAssembler() {
   let buffer = '';
   let index = 0;
+  let dropped = 0;
+  const take = (line) => {
+    const section = parseRewriteSectionLine(line, index);
+    if (!section) return null;
+    if (index >= MAX_SECTIONS) {
+      dropped += 1;
+      return null;
+    }
+    index += 1;
+    return section;
+  };
   return {
     push(text) {
       buffer += text;
@@ -323,11 +342,8 @@ export function createSectionAssembler() {
       while (newlineAt !== -1) {
         const line = buffer.slice(0, newlineAt);
         buffer = buffer.slice(newlineAt + 1);
-        const section = parseRewriteSectionLine(line, index);
-        if (section && index < MAX_SECTIONS) {
-          sections.push(section);
-          index += 1;
-        }
+        const section = take(line);
+        if (section) sections.push(section);
         newlineAt = buffer.indexOf('\n');
       }
       return sections;
@@ -336,11 +352,11 @@ export function createSectionAssembler() {
     flush() {
       const line = buffer;
       buffer = '';
-      if (index >= MAX_SECTIONS) return [];
-      const section = parseRewriteSectionLine(line, index);
-      if (!section) return [];
-      index += 1;
-      return [section];
+      const section = take(line);
+      return section ? [section] : [];
+    },
+    get dropped() {
+      return dropped;
     },
   };
 }
@@ -420,7 +436,8 @@ export function createSseLineSplitter() {
 
 /**
  * Reads the provider's SSE body and yields sections as their lines close,
- * then one final `end` event carrying what the model actually produced.
+ * then one final `end` event carrying what the model actually produced —
+ * including how many of its sections fell past the cap.
  *
  * Separated from the response plumbing so the whole SSE-to-sections path can be
  * exercised against a synthetic body, line endings included.
@@ -454,7 +471,7 @@ export async function* streamModelSections(upstreamBody) {
     for (const section of assembler.flush()) {
       yield { type: 'section', section };
     }
-    yield { type: 'end', rawText, finishReason, firstTextAtMs };
+    yield { type: 'end', rawText, finishReason, firstTextAtMs, droppedSections: assembler.dropped };
   } finally {
     // A consumer that stops pulling — the pump, because its own reader hung up —
     // used to just drop the lock and leave the provider streaming into nobody.
@@ -527,11 +544,24 @@ async function readCachedRewrite(env, key) {
  * or `null` for one that must not be kept at all.
  *
  * Gemini names its reason. `STOP` is the document finishing. `MAX_TOKENS` is the
- * output ceiling, and it is the one truncation worth keeping: the ceiling is a
+ * output ceiling, and it is a truncation worth keeping: the ceiling is a
  * property of the paper and the model, so the next attempt returns the identical
  * half — at the cost of another of the day's uses and another minute of waiting.
  * Refusing to cache it meant the longest papers, the ones this feature exists
  * for, were regenerated from scratch on every single open.
+ *
+ * Sections dropped past the cap are the other one, kept on the same terms. A
+ * model that writes more than `MAX_SECTIONS` section lines still ends on `STOP`,
+ * but the stream cut everything after the cap — Results and Conclusion, on
+ * 2026-10-06 — and how many sections a model writes is decided by the paper,
+ * the model and the prompt, which are what the cache key holds. The next attempt
+ * would most likely overflow at the same place, for another use and another
+ * minute, and refusing to keep it would regenerate the papers with the most
+ * sections on every open. The fix — a prompt that folds harder, or a higher
+ * cap, which the prompt quotes — ships as a new `REWRITE_PROMPT_VERSION`, and a
+ * new version is a new key, so a kept half does not outlive it. The cap only
+ * ever downgrades: `'complete'` becomes `'truncated'`, and a reason that is
+ * about this attempt stays uncacheable however many sections came before it.
  *
  * Everything else is about *this* attempt rather than about the paper: `SAFETY`,
  * `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT` and `SPII` at a filter,
@@ -542,9 +572,9 @@ async function readCachedRewrite(env, key) {
  * closes with `done` and no `error` line, so a half paper stored without the
  * flag is served as a whole one.
  */
-export function cacheableFinish(finishReason) {
+export function cacheableFinish(finishReason, droppedSections = 0) {
   const reason = cleanText(finishReason, 40).toUpperCase();
-  if (reason === 'STOP') return 'complete';
+  if (reason === 'STOP') return droppedSections > 0 ? 'truncated' : 'complete';
   if (reason === 'MAX_TOKENS') return 'truncated';
   return null;
 }
@@ -601,9 +631,9 @@ function replayCachedRewrite(cached, level, language, extraHeaders) {
       controller.enqueue(encoder.encode(ndjsonLine({
         type: 'done',
         sectionCount: cached.sections.length,
-        // Said on every replay of a rewrite that hit the token ceiling, exactly
-        // as the live run said it: this is where the paper stops, and it is not
-        // where the paper ends.
+        // Said on every replay of a rewrite that hit the token ceiling or the
+        // section cap, exactly as the live run said it: this is where the paper
+        // stops, and it is not where the paper ends.
         ...(cached.truncated === true ? { truncated: true } : {}),
       })));
       controller.close();
@@ -777,6 +807,7 @@ function streamRewrite({ env, paper, level, language, meta, cacheKey, quota, ext
     let rawLength = 0;
     let firstTextAt = 0;
     let finishReason = '';
+    let droppedSections = 0;
     let rawAll = '';
     let closed = false;
     let cachedWrite = false;
@@ -924,14 +955,17 @@ function streamRewrite({ env, paper, level, language, meta, cacheKey, quota, ext
         rawLength = event.rawText.length;
         finishReason = event.finishReason;
         firstTextAt = event.firstTextAtMs;
+        droppedSections = event.droppedSections;
       }
 
       // Formatting deviations are recoverable; only a silent model is not.
       if (sections.length === 0 && rawAll) {
-        for (const section of salvageSections(rawAll)) {
+        const salvaged = salvageSections(rawAll);
+        for (const section of salvaged.sections) {
           await send({ type: 'section', index: sections.length, ...section });
           sections.push(section);
         }
+        droppedSections += salvaged.dropped;
         if (sections.length > 0) {
           console.warn('AI rewrite salvaged sections from non-JSONL output', JSON.stringify({
             model: activeModel,
@@ -953,8 +987,11 @@ function streamRewrite({ env, paper, level, language, meta, cacheKey, quota, ext
       } else {
         // A half paper may be kept, but only marked as one — and only when the
         // half is what the next attempt would produce too. `cacheableFinish`
-        // owns both halves of that decision.
-        const finish = cacheableFinish(finishReason);
+        // owns both halves of that decision, the section cap included.
+        const finish = cacheableFinish(finishReason, droppedSections);
+        // Where the reader's copy stops. Past the cap that is our cut rather than
+        // the model's, whatever reason the model gave for its own.
+        const stoppedBy = droppedSections > 0 ? 'SECTION_CAP' : finishReason;
         cachedWrite = finish !== null;
         if (cachedWrite) {
           await writeCachedRewrite(env, cacheKey, {
@@ -973,7 +1010,7 @@ function streamRewrite({ env, paper, level, language, meta, cacheKey, quota, ext
           // Says on the wire where the paper stopped. The reader is handed a
           // rewrite that ends mid-sentence either way, and leaving that
           // undetectable is the whole failure this flag exists to end.
-          ...(finish === 'complete' ? {} : { truncated: true, ...(finishReason ? { finishReason } : {}) }),
+          ...(finish === 'complete' ? {} : { truncated: true, ...(stoppedBy ? { finishReason: stoppedBy } : {}) }),
         });
       }
 
@@ -982,6 +1019,9 @@ function streamRewrite({ env, paper, level, language, meta, cacheKey, quota, ext
         level,
         language,
         sections: sections.length,
+        // Non-zero is a rewrite the reader got only part of, next to a
+        // `finishReason` that can still say STOP: the pair is the diagnosis.
+        droppedSections,
         rawLength,
         firstTextAtMs: firstTextAt,
         finishReason,
