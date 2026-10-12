@@ -39,6 +39,25 @@ test('names local topic entities without changing their canonical category ident
   assert.equal(topic._localTopic, true);
 });
 
+/**
+ * A subcategory used to be born with its area's tagline as its own
+ * description, so every astro-ph.* page whose label has no exact Wikipedia
+ * article read "From subatomic particles to distant galaxies" (audit of
+ * 2026-10-12: 58 of the 142 subcategories). The area keeps its tagline; a
+ * subcategory has none of its own, and the Explorer shows nothing rather
+ * than its parent's sentence.
+ */
+test('a subcategory does not inherit its area\'s description', () => {
+  const area = getLocalTopicEntity('physics');
+  const topic = getLocalTopicEntity('astro-ph.SR');
+  const [searched] = searchLocalTopics('Solar and Stellar Astrophysics');
+
+  assert.ok(area.description);
+  assert.equal(topic.description, undefined);
+  assert.equal(searched.id, 'astro-ph.SR');
+  assert.equal(searched.description, undefined);
+});
+
 test('searches local topics regardless of case', () => {
   const lower = searchLocalTopics('cosmology');
   const upper = searchLocalTopics('COSMOLOGY');
