@@ -18,6 +18,38 @@ test('ordena los destinos: la copia abierta manda, y el DOI nunca entra', () => 
   ]);
 });
 
+test('the library link goes first, in a new tab', () => {
+  const resolver = 'https://eu01.alma.exlibrisgroup.com/view/uresolver/34BUC_USAL/openurl?rft.doi=10.1000/example';
+  const targets = openTargetsForPaper({
+    arxivId: '2101.00001',
+    landingPageUrl: 'https://publisher.example/paper',
+    doi: '10.1000/example',
+  }, { pdfUrl: 'https://repository.example/copy.pdf' }, {
+    status: 'entitled',
+    collection: 'Publisher Journals',
+    url: resolver,
+  });
+
+  assert.deepEqual(targets, [
+    { mode: 'external', url: resolver },
+    { mode: 'external', url: 'https://repository.example/copy.pdf' },
+    { mode: 'inline', url: 'https://arxiv.org/pdf/2101.00001' },
+    { mode: 'external', url: 'https://publisher.example/paper' },
+  ]);
+});
+
+test('without an entitlement the cascade is unchanged', () => {
+  const paper = { landingPageUrl: 'https://publisher.example/paper' };
+  for (const institutionAccess of [
+    { status: 'unknown', collection: null, url: 'https://resolver.example/x' },
+    { status: 'not-entitled', collection: null, url: 'https://resolver.example/x' },
+  ]) {
+    assert.deepEqual(openTargetsForPaper(paper, null, institutionAccess), [
+      { mode: 'external', url: 'https://publisher.example/paper' },
+    ]);
+  }
+});
+
 test('descarta los destinos que el navegador no puede abrir', () => {
   const targets = openTargetsForPaper({
     pdfUrl: 'http://repository.example/paper.pdf',

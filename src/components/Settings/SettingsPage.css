@@ -208,7 +208,17 @@
   text-transform: uppercase;
 }
 
+/* The name and, once linked, the institution pill beside it: the pill stays
+   outside the heading so the heading reads as the name alone. */
+.settings-profile-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .settings-profile-copy h2 {
+  min-width: 0;
   overflow: hidden;
   font-size: 21px;
   letter-spacing: 0;

@@ -38,6 +38,8 @@ import { PAPER_REWRITE_LEVELS } from '../../services/paperRewriteService';
 import { CATEGORIES } from '../../data/categories';
 import { PUBLIC_AVATAR_PRESET, prepareProfileImage } from '../../utils/profileImage';
 import { profileIsPublic, savePublicProfilePhoto } from '../../services/userProfileService';
+import InstitutionDialog from '../Institution/InstitutionDialog.jsx';
+import InstitutionPill from '../Institution/InstitutionPill.jsx';
 import { ownProfileCache, ownProfileKey } from '../../utils/profileSessionCaches.js';
 import { SIGN_IN_PROVIDERS } from '../../services/authIdentityService';
 import { getUiErrorMessage } from '../../utils/errorMessages';
@@ -185,6 +187,11 @@ const SETTINGS_COPY = {
   access: 'Access and session',
   accessDescription: 'Different doors, the same account and the same data.',
   session: 'Session',
+  institution: 'University',
+  institutionDescription: 'Verify where you study or work by signing in with your university\'s Google account.',
+  institutionLinked: name => `Verified with ${name}.`,
+  institutionLink: 'Link',
+  institutionManage: 'Manage',
   sessionDescription: 'Your personalized information remains linked to this account.',
   signOut: 'Sign out',
   signInMethods: 'Ways to sign in',
@@ -242,6 +249,7 @@ export default function SettingsPage() {
     updateReadingPreferences,
     updateProfilePhoto,
     signInProviders,
+    institution,
     linkGitHubAccount,
     signOut,
   } = useAuth();
@@ -263,6 +271,7 @@ export default function SettingsPage() {
   const [photoFeedback, setPhotoFeedback] = useState(null);
   const [linkingGitHub, setLinkingGitHub] = useState(false);
   const [linkFeedback, setLinkFeedback] = useState(null);
+  const [institutionOpen, setInstitutionOpen] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
 
   const sectionIds = useMemo(() => SETTINGS_SECTIONS.map(section => section.id), []);
@@ -529,7 +538,10 @@ export default function SettingsPage() {
 
                 <div className="settings-profile-copy">
                   <small>{copy.account}</small>
-                  <h2 id="settings-account-title">{user?.displayName || copy.defaultUser}</h2>
+                  <div className="settings-profile-title-line">
+                    <h2 id="settings-account-title">{user?.displayName || copy.defaultUser}</h2>
+                    {institution && <InstitutionPill institution={institution} />}
+                  </div>
                   <p>{user?.email}</p>
                   <span><ShieldCheck size={14} /> {accountBadge}</span>
                 </div>
@@ -857,7 +869,28 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  <div className="settings-row" style={{ '--settings-index': 7 }}>
+                  <div className="settings-row settings-row--institution" style={{ '--settings-index': 7 }}>
+                    <span className="settings-row-icon is-cyan"><GraduationCap size={20} /></span>
+                    <div className="settings-row-content">
+                      <div className="settings-row-title-line">
+                        <h3>{copy.institution}</h3>
+                        {institution && <InstitutionPill institution={institution} />}
+                      </div>
+                      <p>{institution ? copy.institutionLinked(institution.name) : copy.institutionDescription}</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="settings-row-action"
+                      onClick={() => setInstitutionOpen(true)}
+                      aria-haspopup="dialog"
+                    >
+                      {institution ? copy.institutionManage : copy.institutionLink}
+                      <CaretRight size={17} aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <InstitutionDialog open={institutionOpen} onOpenChange={setInstitutionOpen} />
+
+                  <div className="settings-row" style={{ '--settings-index': 8 }}>
                     <span className="settings-row-icon is-rose"><User size={20} /></span>
                     <div className="settings-row-content">
                       <h3>{copy.session}</h3>

@@ -16,6 +16,10 @@
  * página del editor, que para un paper de pago es justo el muro que la copia
  * abierta esquivaba -- así que lo pone el manejador al final, después de haber
  * agotado el texto completo y de haber preguntado por una copia libre.
+ *
+ * The reader's library link is here, and first: it is the version of record
+ * through the resolver of a university that subscribes to it. It always opens
+ * in a new tab, because it goes through the university's sign-in.
  */
 import { isTrustedInlinePdfUrl, safeExternalUrl } from './externalUrl.js';
 import { isAIReadablePdfUrl } from './aiExplanationAccess.js';
@@ -63,8 +67,11 @@ export function pdfRelayUrl(sourceUrl, apiBase) {
  *
  * `mode` dice quién abre: `inline` es el visor de la app, y solo lo reciben los
  * hosts que dejan enmarcar su PDF; `external`, una pestaña nueva.
+ * `institutionAccess` is the answer from `findInstitutionAccess`.
  */
-export function openTargetsForPaper(paper, openCopy = null) {
+export function openTargetsForPaper(paper, openCopy = null, institutionAccess = null) {
+  // `findInstitutionAccess` only ever hands over an entitlement with a safe link.
+  const libraryUrl = institutionAccess?.status === 'entitled' ? institutionAccess.url : '';
   const candidates = [
     openCopy?.pdfUrl,
     openCopy?.landingPageUrl,
@@ -74,8 +81,8 @@ export function openTargetsForPaper(paper, openCopy = null) {
     paper?.landingPageUrl,
   ];
 
-  const seen = new Set();
-  const targets = [];
+  const seen = new Set(libraryUrl ? [libraryUrl] : []);
+  const targets = libraryUrl ? [{ mode: 'external', url: libraryUrl }] : [];
   for (const candidate of candidates) {
     const url = safeExternalUrl(candidate);
     // Una misma URL llega por dos campos más veces de las que parece, y

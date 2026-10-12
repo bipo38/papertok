@@ -11,6 +11,11 @@ import {
 } from '../services/authIdentityService';
 import { deleteField, doc, getDoc, getDocFromCache, setDoc } from 'firebase/firestore';
 import {
+  linkInstitution as linkInstitutionAccount,
+  normalizeInstitution,
+  unlinkInstitution as unlinkInstitutionAccount,
+} from '../services/institutionService.js';
+import {
   DEFAULT_READING_PREFERENCES,
   normalizeReadingPreferences,
 } from '../utils/userSettings';
@@ -59,6 +64,9 @@ export function AuthProvider({ children }) {
   // re-emit an auth state change, and a settings row that still says
   // "Connect" right after connecting is a row nobody trusts.
   const [signInProviders, setSignInProviders] = useState([]);
+  // The university a verified address resolved to, written by the Worker
+  // (institution-link.js) and read here with the rest of the user document.
+  const [institution, setInstitution] = useState(null);
   const [profileReloadKey, setProfileReloadKey] = useState(0);
 
   useEffect(() => {
@@ -92,6 +100,7 @@ export function AuthProvider({ children }) {
       setProfilePhoto(null);
       setEmailDigestPending(false);
       setSignInProviders(providerIdsOf(currentUser));
+      setInstitution(null);
 
       if (currentUser) {
         hydrateAccountCaches(currentUser.uid);
@@ -119,6 +128,7 @@ export function AuthProvider({ children }) {
           setReadingPreferences(normalizeReadingPreferences(data.readingPreferences));
           setProfilePhoto(normalizeProfilePhoto(data.profilePhoto));
           setEmailDigestPending(data.emailDigestOptIn === true);
+          setInstitution(normalizeInstitution(data.institution));
           if (onboarded) {
             saveStoredOnboarding(currentUser.uid, {
               complete: true,
@@ -255,6 +265,22 @@ export function AuthProvider({ children }) {
     return result;
   }, []);
 
+  // The Worker writes the field and answers with what it wrote; that answer is
+  // applied here, guarded by uid like the profile writes below, so an account
+  // switched while the Google window was open cannot inherit the other's.
+  const linkInstitution = useCallback(async (email) => {
+    const userId = user?.uid;
+    const linked = await linkInstitutionAccount(email);
+    if (auth.currentUser?.uid === userId) setInstitution(linked);
+    return linked;
+  }, [user?.uid]);
+
+  const unlinkInstitution = useCallback(async () => {
+    const userId = user?.uid;
+    await unlinkInstitutionAccount();
+    if (auth.currentUser?.uid === userId) setInstitution(null);
+  }, [user?.uid]);
+
   // `user?.uid` rather than `user`: Firebase re-emits `currentUser` on token
   // refresh with the same uid but a new object reference, and that must not
   // recreate a function whose only reactive read is the id.
@@ -269,6 +295,7 @@ export function AuthProvider({ children }) {
       setProfilePhoto(null);
       setEmailDigestPending(false);
       setSignInProviders([]);
+      setInstitution(null);
       localStorage.removeItem('papertok_user');
       return;
     }
@@ -504,9 +531,12 @@ export function AuthProvider({ children }) {
     emailDigestPending,
     profileLoadError,
     signInProviders,
+    institution,
     signInWithGoogle,
     signInWithGitHub,
     linkGitHubAccount,
+    linkInstitution,
+    unlinkInstitution,
     signOut,
     completeOnboarding,
     settleEmailDigestOptIn,
@@ -518,10 +548,10 @@ export function AuthProvider({ children }) {
     retryProfileLoad,
     isDemo: IS_DEMO,
   }), [
-    completeOnboarding, emailDigestPending, error, followedAuthors, linkGitHubAccount, loading,
-    onboardingComplete, profileLoadError, profilePhoto, readingPreferences,
+    completeOnboarding, emailDigestPending, error, followedAuthors, institution, linkGitHubAccount,
+    linkInstitution, loading, onboardingComplete, profileLoadError, profilePhoto, readingPreferences,
     retryProfileLoad, setUserPreferences, settleEmailDigestOptIn, signInProviders, signInWithGitHub,
-    signInWithGoogle, signOut, toggleFollowAuthor, updatePreferences,
+    signInWithGoogle, signOut, toggleFollowAuthor, unlinkInstitution, updatePreferences,
     updateProfilePhoto, updateReadingPreferences, user, userPreferences,
   ]);
 

@@ -15,7 +15,7 @@ import {
 } from '@phosphor-icons/react';
 import { CATEGORIES } from '../../data/categories.js';
 import { normalizeGuestAreas, normalizeGuestTopics } from '../../utils/guestInterests.js';
-import { WelcomeReadingChoice, WelcomeInboxChoice, WelcomeProjectSupport } from './GuestWelcomePreferences.jsx';
+import { WelcomeReadingChoice, WelcomeInboxChoice, WelcomeUniversityChoice, WelcomeProjectSupport } from './GuestWelcomePreferences.jsx';
 import ThemeToggle from '../Layout/ThemeToggle.jsx';
 import { Button } from '../ui/button.jsx';
 import { Toggle } from '../ui/toggle.jsx';
@@ -92,7 +92,7 @@ const SHOWCASE_RIGHT = [
 // paper does not speed the column up.
 const STREAM_SECONDS_PER_PAPER = 7;
 
-const STEPS = ['welcome', 'how', 'topics', 'subtopics', 'reading', 'inbox', 'support'];
+const STEPS = ['welcome', 'how', 'topics', 'subtopics', 'reading', 'inbox', 'university', 'support'];
 // Where the intro's skip lands: the question, not past it.
 const TOPICS_INDEX = STEPS.indexOf('topics');
 
@@ -154,6 +154,12 @@ const COPY = {
     inbox: {
       kicker: 'Your inbox',
       title: 'A little science in your inbox?',
+      cta: 'Continue',
+    },
+    university: {
+      kicker: 'Your university',
+      title: 'Do you read through a university library?',
+      lede: 'Papers behind a paywall often open through your library. Tell PaperTok where you study or work.',
       cta: 'Continue',
     },
     support: {
@@ -382,7 +388,7 @@ function Beat({ beat, index, still }) {
   );
 }
 
-export default function GuestWelcome({ initialAreas = [], initialTopics = [], initialReadingLevel = 'university', initialEmailDigest = false, onComplete, onSignIn }) {
+export default function GuestWelcome({ initialAreas = [], initialTopics = [], initialReadingLevel = 'university', initialEmailDigest = false, initialInstitutionEmail = '', onComplete, onSignIn }) {
   const prefersReducedMotion = useReducedMotion();
   const still = Boolean(prefersReducedMotion);
   const copy = COPY.en;
@@ -390,6 +396,7 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
   const [readingLevel, setReadingLevel] = useState(initialReadingLevel);
   // Opt-in: off until the visitor turns it on.
   const [emailDigest, setEmailDigest] = useState(initialEmailDigest);
+  const [institutionEmail, setInstitutionEmail] = useState(initialInstitutionEmail);
   const [direction, setDirection] = useState(1);
   const [leaving, setLeaving] = useState(false);
   const [streamsPaused, setStreamsPaused] = useState(false);
@@ -421,7 +428,7 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
   const isSubtopics = step === 'subtopics';
   // The two question screens scroll under the foot and share a width.
   const isQuestion = isTopics || isSubtopics;
-  const isPreferences = step === 'reading' || step === 'inbox' || step === 'support';
+  const isPreferences = step === 'reading' || step === 'inbox' || step === 'university' || step === 'support';
 
   const goTo = (nextIndex) => {
     if (nextIndex === stepIndex || nextIndex < 0 || nextIndex >= STEPS.length) return;
@@ -459,7 +466,7 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
 
   const answer = () => {
     const areas = normalizeGuestAreas(Array.from(selected));
-    return { areas, topics: normalizeGuestTopics(Array.from(selectedTopics), areas), readingLevel, emailDigest };
+    return { areas, topics: normalizeGuestTopics(Array.from(selectedTopics), areas), readingLevel, emailDigest, institutionEmail };
   };
 
   const finish = () => {
@@ -569,6 +576,7 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
 
             {step === 'reading' && <WelcomeReadingChoice level={readingLevel} onChange={setReadingLevel} />}
             {step === 'inbox' && <WelcomeInboxChoice subscribed={emailDigest} onChange={setEmailDigest} />}
+            {step === 'university' && <WelcomeUniversityChoice email={institutionEmail} onChange={setInstitutionEmail} />}
             {step === 'support' && <WelcomeProjectSupport />}
 
             {isTopics && (

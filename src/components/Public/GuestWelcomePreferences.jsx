@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { animate, cubicBezier, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform } from 'framer-motion';
-import { ArrowUpRight, BookOpen, Check, Cursor, FileText, Flask, Folder, GithubLogo, GraduationCap, LockSimple, Star } from '@phosphor-icons/react';
+import { ArrowUpRight, BookOpen, Check, Cursor, FileText, Flask, Folder, GithubLogo, GraduationCap, LockSimple, LockSimpleOpen, Star } from '@phosphor-icons/react';
 import { CATEGORIES } from '../../data/categories.js';
 import { Button } from '../ui/button.jsx';
+import { Input } from '../ui/input.jsx';
+import { Label } from '../ui/label.jsx';
 import { Switch } from '../ui/switch.jsx';
 
 const LEVELS = [
@@ -162,6 +164,98 @@ export function WelcomeInboxChoice({ subscribed, onChange }) {
         aria-describedby="gw-digest-optin-desc"
       />
     </label>
+  </div>;
+}
+
+// The paper behind the paywall in the library demo: a real one, in a
+// subscription journal, so the lock on it is true. The field colour is the
+// taxonomy's, like every card in the app.
+const LIBRARY_PAPER = {
+  field: 'q-fin',
+  title: 'The Pricing of Options and Corporate Liabilities',
+  authors: 'Black & Scholes · Journal of Political Economy, 1973',
+};
+
+// When the library card lands, in seconds: the paper arrives first, the card
+// slides in over its corner, and the chip turns as the card settles.
+const CARD_AT = 0.9;
+const CARD_SETTLE = 0.85;
+
+// A paywalled paper opening through the library: the paper lands wearing its
+// Subscription chip, a library card slides in over its corner, and the chip
+// turns into "Via your library". Plays once and is still by two seconds
+// (WCAG 2.2.2); with motion refused it is drawn opened, the card in place.
+function LibraryPreview({ still }) {
+  const field = CATEGORIES[LIBRARY_PAPER.field];
+  const [opened, setOpened] = useState(still);
+  return <div className="gw-library-preview" aria-hidden="true">
+    <motion.div
+      className="gw-library"
+      initial={still ? false : { opacity: 0, transform: 'translateY(16px)' }}
+      animate={{ opacity: 1, transform: 'translateY(0px)' }}
+      transition={{ duration: 0.45, ease: ARRIVE_EASE, delay: 0.1 }}
+    >
+      <div className="gw-library-paper" style={{ '--area-accent': field.gradient }}>
+        <span className="gw-library-venue">{field.label}</span>
+        <strong lang="en">{LIBRARY_PAPER.title}</strong>
+        <span className="gw-library-authors">{LIBRARY_PAPER.authors}</span>
+        {/* The two readings share a cell and cross-fade, like the envelope's
+            label: the locked chip gives way to the one the library grants. */}
+        <span className="gw-library-chip" data-opened={opened ? '' : undefined}>
+          <span><LockSimple size={11} weight="bold" />Subscription</span>
+          <span><LockSimpleOpen size={11} weight="bold" />Via your library</span>
+        </span>
+        <span className="gw-demo-title" />
+        <span className="gw-demo-title gw-demo-title--short" />
+      </div>
+      <motion.div
+        className="gw-library-card"
+        initial={still ? false : { opacity: 0, transform: 'translate(64px, 48px) rotate(8deg)' }}
+        animate={{ opacity: 1, transform: 'translate(0px, 0px) rotate(-6deg)' }}
+        transition={{ type: 'spring', duration: CARD_SETTLE, bounce: 0.24, delay: CARD_AT }}
+        onAnimationComplete={() => setOpened(true)}
+      >
+        <span className="gw-library-card-head">
+          <GraduationCap size={14} weight="fill" />
+          <span>University library</span>
+        </span>
+        <span className="gw-library-card-name" />
+        <span className="gw-library-card-name gw-library-card-name--short" />
+        <span className="gw-library-card-foot">
+          <span className="gw-library-card-bars" />
+          <span className="gw-library-card-ok"><Check size={10} weight="bold" />Member</span>
+        </span>
+      </motion.div>
+    </motion.div>
+  </div>;
+}
+
+// The university, asked before there is an account to attach it to: the
+// welcome only takes the address. The Google sign-in that proves it needs a
+// session, so it happens on the onboarding's last step, with this address
+// filled in — or with no window at all when the account signs in with that
+// very Google account. Optional, and the field says so rather than a switch.
+export function WelcomeUniversityChoice({ email, onChange }) {
+  const still = Boolean(useReducedMotion());
+  return <div className="gw-preferences gw-university">
+    <LibraryPreview still={still} />
+    <div className="gw-university-field">
+      <Label htmlFor="gw-university-email">University email</Label>
+      <Input
+        id="gw-university-email"
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        spellCheck="false"
+        placeholder="name@university.edu"
+        value={email}
+        onChange={event => onChange(event.target.value)}
+        aria-describedby="gw-university-note"
+      />
+      <p id="gw-university-note" className="gw-preference-note">
+        {'Optional. After you sign in, Google confirms the account once and PaperTok keeps the institution, not the address.'}
+      </p>
+    </div>
   </div>;
 }
 

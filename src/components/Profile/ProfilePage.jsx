@@ -49,6 +49,7 @@ import {
 } from '../../services/userProfileService.js';
 import { attributePublicList } from '../../services/publicListService.js';
 import VisibilityChoice from './VisibilityChoice.jsx';
+import InstitutionPill from '../Institution/InstitutionPill.jsx';
 import { visibilityCopy } from './visibilityCopy.js';
 import VisibilityPrompt from './VisibilityPrompt.jsx';
 import SettingsSubheader from '../Settings/SettingsSubheader.jsx';
@@ -92,7 +93,7 @@ const HANDLE_ERROR_COPY = {
 export default function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, profilePhoto } = useAuth();
+  const { user, profilePhoto, institution } = useAuth();
 
   useEffect(() => {
     void loadProfileFonts();
@@ -468,6 +469,7 @@ export default function ProfilePage() {
           ...payload,
           handle: handleCheck.handle,
           visibility: visibilityDraft,
+          institution,
         });
         setProfile({ ...created, pinnedLists: created.pinnedLists || [] });
         setStatus('ready');
@@ -1148,12 +1150,15 @@ export default function ProfilePage() {
                     : <span>{(displayName || user.email || '?').trim().charAt(0).toUpperCase()}</span>}
                 </div>
                 <div className="profile-preview-name">
-                  <strong
-                    key={`name-${savedTick}`}
-                    className={savedTick > 0 ? 'is-flashing' : undefined}
-                  >
-                    {displayName || '—'}
-                  </strong>
+                  <div className="profile-preview-name-line">
+                    <strong
+                      key={`name-${savedTick}`}
+                      className={savedTick > 0 ? 'is-flashing' : undefined}
+                    >
+                      {displayName || '—'}
+                    </strong>
+                    {institution && <InstitutionPill institution={institution} />}
+                  </div>
                   <span
                     key={`handle-${savedTick}`}
                     className={savedTick > 0 ? 'is-flashing' : undefined}

@@ -187,3 +187,15 @@ test('the email digest travels only as an explicit yes', () => {
   clearGuestInterests(storage);
   assert.equal(readGuestInterests(storage), null);
 });
+
+test('the university address travels only while it parses as one, lowercased', () => {
+  const storage = fakeStorage();
+  saveGuestInterests({ areas: ['cs'], institutionEmail: ' Alice@USAL.es ' }, storage);
+  assert.equal(readGuestInterests(storage).institutionEmail, 'alice@usal.es');
+  saveGuestInterests({ areas: ['cs'], institutionEmail: 'alice' }, storage);
+  assert.equal('institutionEmail' in readGuestInterests(storage), false);
+  storage.setItem('papertok_guestInterests', JSON.stringify({ areas: ['cs'], institutionEmail: 42 }));
+  assert.equal('institutionEmail' in readGuestInterests(storage), false);
+  clearGuestInterests(storage);
+  assert.equal(readGuestInterests(storage), null);
+});

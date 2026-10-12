@@ -18,7 +18,7 @@ const cssPromise = read('./GuestWelcome.css').then(stripComments);
  */
 test('the welcome retains its intro and topics before personalization and optional support', async () => {
   const jsx = await jsxPromise;
-  assert.match(jsx, /const STEPS = \['welcome', 'how', 'topics', 'subtopics', 'reading', 'inbox', 'support'\];/);
+  assert.match(jsx, /const STEPS = \['welcome', 'how', 'topics', 'subtopics', 'reading', 'inbox', 'university', 'support'\];/);
   assert.match(jsx, /<motion\.main\s+className=\{`gw\$\{/, 'the welcome brings its own <main>, the feed page is not mounted under it');
   assert.doesNotMatch(jsx, /ui\/dialog|<Dialog/, 'a first visit is not a dialog over the feed');
   // The feed is built from the answer, so the last step cannot be passed

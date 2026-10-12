@@ -36,6 +36,7 @@ import { userSearchEntry, userSearchReference } from './userSearchService.js';
 import { patientRead } from '../utils/boundedRead.js';
 import { documentIsAuthoritative } from '../utils/cacheAuthority.js';
 import { normalizeHandle, requireHandle } from '../utils/userHandle.js';
+import { normalizeInstitution } from './institutionService.js';
 
 export const USER_PROFILE_LIMITS = Object.freeze({
   displayName: 80,
@@ -457,9 +458,13 @@ export async function createUserProfile(input, overrides) {
   const timestamp = api.now();
   const batch = api.batch(api.database);
 
+  // The verified institution rides along as a copy the rules check against
+  // users/{uid}; after this the Worker is the only writer of it on both.
+  const institution = normalizeInstitution(input?.institution);
   batch.set(profileReference(api, uid), {
     handle,
     ...payload,
+    ...(institution ? { institution } : {}),
     visibility: input.visibility,
     createdAt: timestamp,
     updatedAt: timestamp,

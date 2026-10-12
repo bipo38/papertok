@@ -1003,6 +1003,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .gw-env-label > span { transform: none !important; transition: opacity 150ms ease; }
+  .gw-library-chip > span { transform: none !important; transition: opacity 150ms ease; }
 
   .gw-stream-track {
     animation: none;
@@ -1075,6 +1076,38 @@
 .gw-env-seal { position: absolute; top: 338px; left: 50%; z-index: 5; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-full); background: var(--accent-primary); color: var(--text-inverse); box-shadow: 0 0 0 2px var(--bg-elevated), 0 0 0 3px var(--border-strong); font: 600 0.95rem/1 var(--font-serif); }
 .gw-env-sparks { position: absolute; top: 52px; left: 50%; z-index: 5; }
 .gw-env-sparks span { position: absolute; top: -3px; left: -3px; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--area-accent); }
+/* The university: the library demo over one labelled field, the width of
+   the digest row, with its note under it. The label is the mono kicker
+   voice. Stage 300 × 250: the paper card sits top-left and the library card
+   lands over its bottom-right corner — the skeleton lines, never the chip,
+   which is the point of the picture. */
+.gw-university { margin-top: var(--space-2); }
+.gw-library-preview { display: grid; place-items: center; margin-top: var(--space-2); pointer-events: none; }
+.gw-library { position: relative; width: 300px; height: 250px; zoom: 0.9; }
+.gw-library-paper { position: absolute; top: 10px; left: 18px; display: flex; flex-direction: column; gap: 6px; width: 214px; padding: 14px; border: 1px solid var(--border-default); border-top: 3px solid var(--area-accent); border-radius: var(--radius-lg); background: var(--bg-card); box-shadow: var(--shadow-sm); text-align: left; }
+.gw-library-venue { font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; color: var(--area-accent); }
+.gw-library-paper strong { font: 500 0.95rem/1.25 var(--font-serif); color: var(--text-primary); text-wrap: balance; }
+.gw-library-authors { font-size: 0.6875rem; line-height: 1.4; color: var(--text-secondary); }
+.gw-library-paper .gw-demo-title { margin-top: 4px; }
+/* The chip's two readings in one cell: locked, amber; opened, the blue the
+   real pill wears beside the reader's name. */
+.gw-library-chip { display: grid; justify-items: start; margin: 2px 0 4px; }
+.gw-library-chip > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px; border: 1px solid var(--tint-amber-line); border-radius: var(--radius-sm); background: var(--tint-amber-bg); color: var(--tint-amber-fg); font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; white-space: nowrap; transition: opacity 220ms cubic-bezier(0.23, 1, 0.32, 1), transform 220ms cubic-bezier(0.23, 1, 0.32, 1); }
+.gw-library-chip > span:last-child { border-color: var(--tint-blue-line); background: var(--tint-blue-bg); color: var(--tint-blue-fg); opacity: 0; transform: translateY(5px); }
+.gw-library-chip[data-opened] > span:first-child { opacity: 0; transform: translateY(-5px); }
+.gw-library-chip[data-opened] > span:last-child { opacity: 1; transform: translateY(0); }
+/* The library card: ID-card proportions, landing over the paper's corner. */
+.gw-library-card { position: absolute; right: 10px; bottom: 0; display: flex; flex-direction: column; gap: 8px; width: 150px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg-elevated); box-shadow: var(--shadow-md); text-align: left; }
+.gw-library-card-head { display: flex; align-items: center; gap: 5px; padding-bottom: 6px; border-bottom: 1px solid var(--border-subtle); font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; color: var(--text-secondary); }
+.gw-library-card-head svg { color: var(--tint-blue-fg); }
+.gw-library-card-name { display: block; width: 78%; height: 6px; border-radius: var(--radius-sm); background: var(--text-primary); opacity: 0.8; }
+.gw-library-card-name--short { width: 48%; opacity: 0.45; }
+.gw-library-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.gw-library-card-bars { display: block; flex: 1; height: 12px; background: repeating-linear-gradient(90deg, var(--text-primary) 0 1px, transparent 1px 3px, var(--text-primary) 3px 5px, transparent 5px 7px); opacity: 0.55; }
+.gw-library-card-ok { display: inline-flex; align-items: center; gap: 3px; font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; color: var(--accent-success); }
+.gw-university-field { display: flex; flex-direction: column; gap: var(--space-2); width: min(400px, 100%); margin: var(--space-4) auto 0; text-align: left; }
+.gw-university-field label { font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; color: var(--text-secondary); }
+.gw-university-field .gw-preference-note { margin-top: var(--space-1); }
 /* Support: the words and the browser side by side, browser on the right, so
    the browser can be large. Reversed in CSS rather than in the markup: the
    browser is decoration (aria-hidden) and still comes first where a phone,
@@ -1129,4 +1162,5 @@
   .gw-level input { top: var(--space-4); right: var(--space-4); }
   /* Keep the illustration short enough that the sign-in action stays near. */
   .gw-env { zoom: 0.72; }
+  .gw-library { zoom: 0.8; }
 }

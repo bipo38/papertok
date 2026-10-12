@@ -1828,6 +1828,82 @@ test('the email digest opt-in is a bool the owner can set and then delete', asyn
   await assertSucceeds(setDoc(ref, { emailDigestOptIn: deleteField() }, { merge: true }));
 });
 
+// The institution the Worker verified (worker/institution-link.js) rides on
+// the same document and is frozen the same way: carried along, never written.
+const INSTITUTION = {
+  domain: 'usal.es',
+  rorId: 'https://ror.org/02f40zc51',
+  name: 'Universidad de Salamanca',
+  acronym: 'USAL',
+  entityId: 'https://idp.usal.es/entity',
+  verifiedAt: '2026-10-13T10:00:00.000Z',
+};
+
+test('a verified institution survives the owner\'s own writes and cannot be edited or dropped', async () => {
+  await reset();
+  await seedLegacyUserDoc({ institution: INSTITUTION });
+  const db = asAlice();
+  const ref = doc(db, 'users', ALICE);
+  // Every merge the app makes carries the field along unchanged.
+  await assertSucceeds(setDoc(ref, { preferences: ['cs.LG'] }, { merge: true }));
+  await assertSucceeds(setDoc(ref, { profilePhoto: 'data:image/webp;base64,AAAA' }, { merge: true }));
+  // Editing it, even one field of it, is refused; so is removing it.
+  await assertFails(setDoc(ref, { institution: { ...INSTITUTION, name: 'Harvard University' } }, { merge: true }));
+  await assertFails(setDoc(ref, { institution: { acronym: 'MIT' } }, { merge: true }));
+  await assertFails(updateDoc(ref, { institution: deleteField() }));
+  await assertFails(updateDoc(ref, { 'institution.acronym': 'MIT' }));
+});
+
+test('the public profile may carry the institution only as an exact copy of the verified one', async () => {
+  await reset();
+  await seedLegacyUserDoc({ institution: INSTITUTION });
+  const ref = doc(asAlice(), 'userProfiles', ALICE);
+  await assertSucceeds(updateDoc(ref, { institution: INSTITUTION, updatedAt: serverTimestamp() }));
+  // One field off, or an institution the account never verified: refused.
+  await assertFails(updateDoc(ref, { institution: { ...INSTITUTION, acronym: 'MIT' }, updatedAt: serverTimestamp() }));
+  // Writes that leave the field alone keep working, as every profile edit does.
+  await assertSucceeds(updateDoc(ref, { displayName: 'Alice Renamed', updatedAt: serverTimestamp() }));
+});
+
+test('the institution copy leaves the rules budget room for the heaviest profile write', async () => {
+  // Six pins plus a handle change is the write that sits closest to the
+  // emulator's 1000-expression ceiling (FIX A). Carrying the institution
+  // along, as a merged document does, must not push it over.
+  await reset();
+  await seedOwnedLists(6);
+  await seedLegacyUserDoc({ institution: INSTITUTION });
+  const db = asAlice();
+  await assertSucceeds(updateDoc(doc(db, 'userProfiles', ALICE), {
+    institution: INSTITUTION, pinnedLists: ownedPins(6), updatedAt: serverTimestamp(),
+  }));
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'handles', 'alice2'), { uid: ALICE, createdAt: serverTimestamp() });
+  batch.delete(doc(db, 'handles', 'alice'));
+  batch.update(doc(db, 'userProfiles', ALICE), {
+    handle: 'alice2', institution: INSTITUTION, pinnedLists: ownedPins(6), updatedAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+});
+
+test('a profile cannot claim an institution its account does not have', async () => {
+  await reset();
+  await seedLegacyUserDoc();
+  const ref = doc(asAlice(), 'userProfiles', ALICE);
+  await assertFails(updateDoc(ref, { institution: INSTITUTION, updatedAt: serverTimestamp() }));
+  // Nor can a stranger put one on somebody else's page.
+  await assertFails(updateDoc(doc(asBob(), 'userProfiles', ALICE), { institution: INSTITUTION, updatedAt: serverTimestamp() }));
+});
+
+test('a client cannot award itself an institution', async () => {
+  await reset();
+  const db = asAlice();
+  const ref = doc(db, 'users', ALICE);
+  // Neither on create nor on a later merge into a document without one.
+  await assertFails(setDoc(ref, { onboardingComplete: true, institution: INSTITUTION }));
+  await assertSucceeds(setDoc(ref, { onboardingComplete: true }));
+  await assertFails(setDoc(ref, { institution: INSTITUTION }, { merge: true }));
+});
+
 // =========================================================================
 // F9 — User search index
 //

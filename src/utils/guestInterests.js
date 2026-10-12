@@ -1,5 +1,6 @@
 import { CATEGORIES } from '../data/categories.js';
 import { normalizeReadingPreferences } from './userSettings.js';
+import { institutionDomainOf } from './institutionDomain.js';
 
 /**
  * What a visitor told us they care about, before they had an account.
@@ -133,7 +134,7 @@ export function guestSeedCategoriesForAreas(areas, perArea = GUEST_SEED_PER_AREA
 
 /**
  * `null` when the prompt has never been answered on this device. Otherwise
- * `{ areas, topics, dismissed, readingLevel?, emailDigest? }`: `dismissed` is a "not now" (or a pick emptied out),
+ * `{ areas, topics, dismissed, readingLevel?, emailDigest?, institutionEmail? }`: `dismissed` is a "not now" (or a pick emptied out),
  * which the prompt honours by not asking again — the header chip stays as
  * the way back in.
  */
@@ -152,7 +153,11 @@ export function readGuestInterests(storage) {
     // Present only as an explicit yes: email is opt-in, so anything else —
     // an old answer, a no, a malformed value — reads as no.
     const email = parsed.emailDigest === true ? { emailDigest: true } : {};
-    return { areas, topics, dismissed, ...reading, ...email };
+    // The university address typed on the welcome, waiting for an account to
+    // link it to (InstitutionLink). Kept only while it parses as an address.
+    const institution = institutionDomainOf(parsed.institutionEmail)
+      ? { institutionEmail: String(parsed.institutionEmail).trim().toLowerCase() } : {};
+    return { areas, topics, dismissed, ...reading, ...email, ...institution };
   } catch {
     return null;
   }
@@ -163,7 +168,9 @@ export function readGuestInterests(storage) {
  * welcome). Returns the normalized list of areas that was actually stored;
  * `readGuestInterests` has the topics and optional reading level. The level
  * travels with this guest bridge until account onboarding saves it to the UID,
- * and so does an explicit yes to the email digest (`emailDigest: true`).
+ * and so do an explicit yes to the email digest (`emailDigest: true`) and the
+ * university address the welcome asked for (`institutionEmail`), which the
+ * onboarding turns into a verified institution once there is an account.
  */
 export function saveGuestInterests(answer, storage) {
   const areas = Array.isArray(answer) ? answer : answer?.areas;
@@ -183,6 +190,8 @@ export function saveGuestInterests(answer, storage) {
         topics,
         ...(answer?.readingLevel ? { readingLevel: normalizeReadingPreferences({ aiExplanationLevel: answer.readingLevel }).aiExplanationLevel } : {}),
         ...(answer?.emailDigest === true ? { emailDigest: true } : {}),
+        ...(institutionDomainOf(answer?.institutionEmail)
+          ? { institutionEmail: String(answer.institutionEmail).trim().toLowerCase() } : {}),
         dismissedAt: null,
         updatedAt: Date.now(),
       }));

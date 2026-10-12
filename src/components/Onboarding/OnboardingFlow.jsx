@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, Check, GraduationCap } from '@phosphor-icons/react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { CATEGORIES } from '../../data/categories';
 import './OnboardingFlow.css';
 import { useAnalyticsConsent } from '../../context/AnalyticsContext';
 import VisibilityChoice from '../Profile/VisibilityChoice.jsx';
+import InstitutionLink from '../Institution/InstitutionLink.jsx';
 import {
   HandleUnavailableError,
   PROFILE_VISIBILITY,
@@ -106,6 +107,9 @@ export default function OnboardingFlow() {
   // The specific topics the welcome let them narrow an area to, if any: an
   // area narrowed there pre-selects only those categories here.
   const [guestSeedTopics] = useState(() => readGuestInterests()?.topics ?? []);
+  // The university address typed on the welcome, if any: the link needs an
+  // account, so it is completed here, with the address already in the field.
+  const [guestInstitutionEmail] = useState(() => readGuestInterests()?.institutionEmail ?? '');
   const [stepState, setStep] = useState(guestSeed ? 4 : 1);
   const [selectedAreas, setSelectedAreas] = useState(() => new Set(guestSeed ?? []));
   const [selectedSubcategories, setSelectedSubcategories] = useState(() => new Set(guestSeedCategoriesForAreas(guestSeed ?? [], GUEST_SEED_PER_AREA, guestSeedTopics)));
@@ -122,7 +126,7 @@ export default function OnboardingFlow() {
   // completeOnboarding must skip the create: the handle is already this
   // account's, and a second create hits its own reservation as "taken".
   const profileCreated = useRef(false);
-  const { completeOnboarding, onboardingComplete, user } = useAuth();
+  const { completeOnboarding, onboardingComplete, user, institution } = useAuth();
   const { language } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
@@ -252,6 +256,7 @@ export default function OnboardingFlow() {
           allowContact: false,
           photo: '',
           visibility: PROFILE_VISIBILITY.public,
+          institution,
         });
         profileCreated.current = true;
       }
@@ -667,6 +672,32 @@ export default function OnboardingFlow() {
                 </div>
               </div>
             )}
+
+            {/* A card like the visibility options above it: icon, title, one
+                sentence, and the form. It turns blue once linked, the colour
+                the institution pill wears everywhere else. */}
+            <section
+              className={`onboarding-institution${institution ? ' is-linked' : ''}`}
+              aria-labelledby="onboarding-institution-title"
+            >
+              <div className="onboarding-institution-head">
+                <span className="onboarding-institution-icon" aria-hidden="true">
+                  <GraduationCap size={20} weight={institution ? 'fill' : 'regular'} />
+                </span>
+                <div className="onboarding-institution-copy">
+                  <div className="onboarding-institution-title-line">
+                    <h2 id="onboarding-institution-title">{'Link your university'}</h2>
+                    <span className="onboarding-institution-tag">{'Optional'}</span>
+                  </div>
+                  <p>
+                    {institution
+                      ? 'Papers behind a paywall can open through your library. You can unlink it from Settings.'
+                      : 'Sign in once with your university\'s Google account, and papers behind a paywall can open through your library.'}
+                  </p>
+                </div>
+              </div>
+              <InstitutionLink idPrefix="onboarding-institution" defaultEmail={guestInstitutionEmail} />
+            </section>
 
             {profileError && (
               <p className="onboarding-profile-error" role="alert">{profileError}</p>
