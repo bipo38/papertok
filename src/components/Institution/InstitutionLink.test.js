@@ -15,9 +15,9 @@ test('SOURCE: the link form keeps its own Google button unless the caller draws 
     code,
     /\{showSubmit && \(\s*<Button type="submit" variant="outline" className="institution-link-submit" aria-disabled=\{busy \|\| undefined\}>[\s\S]*?COPY\.submit\}\s*<\/Button>\s*\)\}/,
   );
-  // Uncontrolled by default, seeded from defaultEmail; controlled when the
-  // caller passes `email`, and then every write goes through the caller.
-  assert.match(code, /const \[ownEmail, setOwnEmail\] = useState\(defaultEmail\);/);
+  // Uncontrolled and empty by default; controlled when the caller passes
+  // `email`, and then every write goes through the caller.
+  assert.match(code, /const \[ownEmail, setOwnEmail\] = useState\(''\);/);
   assert.match(code, /const email = controlled \? controlledEmail : ownEmail;/);
   assert.match(code, /const setEmail = controlled \? onEmailChange : setOwnEmail;/);
   assert.equal((code.match(/setOwnEmail\(/g) || []).length, 0, 'nothing writes the own copy past the switch');

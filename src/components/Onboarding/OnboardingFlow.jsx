@@ -306,14 +306,9 @@ export default function OnboardingFlow() {
   // AuthContext clears the answer once completeOnboarding has written them.
   const [guestAnswer] = useState(() => readGuestInterests());
   const guestSeed = guestAnswer?.areas.length ? guestAnswer.areas : null;
-  // The university address typed on the welcome, if any: the link needs an
-  // account, so it is completed here, with the address already in the field.
-  // InstitutionLink links it on mount, so it is offered on the first visit
-  // only: after an Unlink, coming back must not link it again unasked.
-  const [guestInstitutionEmail, setGuestInstitutionEmail] = useState(() => guestAnswer?.institutionEmail ?? '');
   // The link field's address, kept here because the page's primary changes
   // with it: with one typed it submits the link, without one it finishes.
-  const [institutionEmail, setInstitutionEmail] = useState(() => guestAnswer?.institutionEmail ?? '');
+  const [institutionEmail, setInstitutionEmail] = useState('');
   const [linkBusy, setLinkBusy] = useState(false);
   const still = Boolean(useReducedMotion());
   const [stepState, setStep] = useState(0);
@@ -406,7 +401,6 @@ export default function OnboardingFlow() {
     setDirection(nextIndex > stepIndex ? 1 : -1);
     setStep(nextIndex);
     setProfileError(null);
-    if (step === 'university') setGuestInstitutionEmail('');
     // A screen is a page: it starts at the top.
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
@@ -480,7 +474,6 @@ export default function OnboardingFlow() {
         // is taken, with the reason under the field.
         setDirection(-1);
         setStep(steps.indexOf('handle'));
-        setGuestInstitutionEmail('');
         setProfileError(COPY.handle.handleTaken);
       } else if (err?.code === 'ONBOARDING_WRITE_TIMEOUT') {
         // completeOnboarding's write is a merge-set of the same fields, and
@@ -711,14 +704,12 @@ export default function OnboardingFlow() {
         </div>
       )}
 
-      {/* The welcome's university screen, with the link in its field's
-          place: the primary below submits it. */}
+      {/* The university screen: the primary below submits the link. */}
       {step === 'university' && (
         <div className="gw-preferences gw-university onboarding-university">
           <LibraryPreview still={still} />
           <InstitutionLink
             idPrefix="onboarding-institution"
-            defaultEmail={guestInstitutionEmail}
             formId={UNIVERSITY_FORM_ID}
             showSubmit={false}
             email={institutionEmail}

@@ -189,16 +189,13 @@ test('the email digest travels only as an explicit yes', () => {
   assert.equal(readGuestInterests(storage), null);
 });
 
-test('the university address travels only while it parses as one, lowercased', () => {
+test('a university address is neither stored nor read back: the account onboarding asks for it', () => {
   const storage = fakeStorage();
-  saveGuestInterests({ areas: ['cs'], institutionEmail: ' Alice@USAL.es ' }, storage);
-  assert.equal(readGuestInterests(storage).institutionEmail, 'alice@usal.es');
-  saveGuestInterests({ areas: ['cs'], institutionEmail: 'alice' }, storage);
-  assert.equal('institutionEmail' in readGuestInterests(storage), false);
-  storage.setItem('papertok_guestInterests', JSON.stringify({ areas: ['cs'], institutionEmail: 42 }));
-  assert.equal('institutionEmail' in readGuestInterests(storage), false);
-  clearGuestInterests(storage);
-  assert.equal(readGuestInterests(storage), null);
+  saveGuestInterests({ areas: ['cs'], institutionEmail: 'alice@usal.es' }, storage);
+  assert.equal('institutionEmail' in JSON.parse(storage.getItem('papertok_guestInterests')), false);
+  // An answer stored before the welcome stopped asking still reads.
+  storage.setItem('papertok_guestInterests', JSON.stringify({ areas: ['cs'], institutionEmail: 'alice@usal.es' }));
+  assert.deepEqual(readGuestInterests(storage), { areas: ['cs'], topics: [], dismissed: false });
 });
 
 test('the seed size counts what the answer stands for before the cap', () => {

@@ -3,8 +3,6 @@ import { animate, cubicBezier, motion, useMotionValue, useMotionValueEvent, useR
 import { ArrowUpRight, BookOpen, Check, Cursor, FileText, Flask, Folder, GithubLogo, GraduationCap, LockSimple, LockSimpleOpen, Star } from '@phosphor-icons/react';
 import { CATEGORIES } from '../../data/categories.js';
 import { Button } from '../ui/button.jsx';
-import { Input } from '../ui/input.jsx';
-import { Label } from '../ui/label.jsx';
 import { Switch } from '../ui/switch.jsx';
 
 const LEVELS = [
@@ -185,6 +183,7 @@ const CARD_SETTLE = 0.85;
 // Subscription chip, a library card slides in over its corner, and the chip
 // turns into "Via your library". Plays once and is still by two seconds
 // (WCAG 2.2.2); with motion refused it is drawn opened, the card in place.
+// Only the account onboarding's university screen (OnboardingFlow) draws it.
 export function LibraryPreview({ still }) {
   const field = CATEGORIES[LIBRARY_PAPER.field];
   const [opened, setOpened] = useState(still);
@@ -227,35 +226,6 @@ export function LibraryPreview({ still }) {
         </span>
       </motion.div>
     </motion.div>
-  </div>;
-}
-
-// The university, asked before there is an account to attach it to: the
-// welcome only takes the address. The Google sign-in that proves it needs a
-// session, so it happens on the onboarding's last step, with this address
-// filled in — or with no window at all when the account signs in with that
-// very Google account. Optional, and the field says so rather than a switch.
-export function WelcomeUniversityChoice({ email, onChange }) {
-  const still = Boolean(useReducedMotion());
-  return <div className="gw-preferences gw-university">
-    <LibraryPreview still={still} />
-    <div className="gw-university-field">
-      <Label htmlFor="gw-university-email">University email</Label>
-      <Input
-        id="gw-university-email"
-        type="email"
-        inputMode="email"
-        autoComplete="email"
-        spellCheck="false"
-        placeholder="name@university.edu"
-        value={email}
-        onChange={event => onChange(event.target.value)}
-        aria-describedby="gw-university-note"
-      />
-      <p id="gw-university-note" className="gw-preference-note">
-        {'Optional. After you sign in, Google confirms the account once and PaperTok keeps the institution, not the address.'}
-      </p>
-    </div>
   </div>;
 }
 

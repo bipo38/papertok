@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { institutionDomainOf } from '../../utils/institutionDomain.js';
 import { getUiErrorMessage } from '../../utils/errorMessages.js';
 import { Button } from '../ui/button.jsx';
 import { Input } from '../ui/input.jsx';
@@ -28,23 +27,15 @@ const COPY = {
  * onboarding's last step and from Settings. `idPrefix` keeps the field ids
  * unique when the two could share a page.
  *
- * `defaultEmail` is the address the welcome asked for before there was an
- * account. When the account that then signed in is that very address, the
- * link needs no Google window — the Worker checks the session itself — so
- * it is completed here on arrival, with the field, button and feedback
- * showing what happened exactly as a press would.
- *
  * Settings uses it as it is: the field and its own Google button. A caller
  * that draws the submit itself (the onboarding's primary, in the page's foot)
  * passes `showSubmit={false}` and a `formId` for its button's `form`, owns
  * the address through `email` / `onEmailChange` so it can tell whether one is
  * typed, and hears `onBusyChange` to say "Verifying…" while Google is open.
- * There, `defaultEmail` is only the address to link on arrival, and
- * `linkedNote` adds a sentence after "Verified with …" once linked.
+ * There, `linkedNote` adds a sentence after "Verified with …" once linked.
  */
 export default function InstitutionLink({
   idPrefix = 'institution',
-  defaultEmail = '',
   formId,
   showSubmit = true,
   email: controlledEmail,
@@ -52,23 +43,12 @@ export default function InstitutionLink({
   onBusyChange,
   linkedNote,
 }) {
-  const { user, institution, linkInstitution, unlinkInstitution } = useAuth();
-  const [ownEmail, setOwnEmail] = useState(defaultEmail);
+  const { institution, linkInstitution, unlinkInstitution } = useAuth();
+  const [ownEmail, setOwnEmail] = useState('');
   const controlled = controlledEmail !== undefined;
   const email = controlled ? controlledEmail : ownEmail;
   const setEmail = controlled ? onEmailChange : setOwnEmail;
-  // The no-window case, decided once on arrival: the session's own verified
-  // address is the one the welcome took. Any other address keeps the press,
-  // because Google's window has to come from a gesture. Busy from the first
-  // paint when it applies, so the screen never shows a button it is about to
-  // press itself.
-  const [arrival] = useState(() => {
-    const domain = institutionDomainOf(defaultEmail);
-    return !institution && domain && user?.emailVerified && institutionDomainOf(user.email) === domain
-      ? defaultEmail
-      : '';
-  });
-  const [busy, setBusy] = useState(Boolean(arrival));
+  const [busy, setBusy] = useState(false);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const [feedback, setFeedback] = useState(null);
   // Linking swaps the form for the linked row and unlinking swaps it back, so
@@ -86,11 +66,14 @@ export default function InstitutionLink({
   const hintId = `${idPrefix}-hint`;
   const feedbackId = `${idPrefix}-feedback`;
 
-  // Runs with `busy` already set by whoever called: the press below, or the
-  // arrival effect, which must not set state of its own before the await.
-  const link = useCallback(async (address) => {
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setFeedback(null);
+    pendingFocus.current = 'unlink';
     try {
-      await linkInstitution(address);
+      await linkInstitution(email);
       setEmail('');
       setFeedback({ tone: 'success', text: COPY.linkedNow });
     } catch (error) {
@@ -105,28 +88,7 @@ export default function InstitutionLink({
     } finally {
       setBusy(false);
     }
-  }, [linkInstitution, setEmail]);
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setFeedback(null);
-    // A press moves focus to what continues the task; an arrival link (below)
-    // does not, because nobody pressed anything and the step's heading has it.
-    pendingFocus.current = 'unlink';
-    void link(email);
   };
-
-  // Once: `arrival` is fixed for the component's life, and the ref keeps a
-  // new `link` identity (the account changed under the screen) from linking
-  // a second time.
-  const arrived = useRef(false);
-  useEffect(() => {
-    if (!arrival || arrived.current) return;
-    arrived.current = true;
-    void link(arrival);
-  }, [arrival, link]);
 
   const handleUnlink = async () => {
     if (busy) return;

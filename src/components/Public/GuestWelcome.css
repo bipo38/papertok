@@ -1076,9 +1076,8 @@
 .gw-env-seal { position: absolute; top: 338px; left: 50%; z-index: 5; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-full); background: var(--accent-primary); color: var(--text-inverse); box-shadow: 0 0 0 2px var(--bg-elevated), 0 0 0 3px var(--border-strong); font: 600 0.95rem/1 var(--font-serif); }
 .gw-env-sparks { position: absolute; top: 52px; left: 50%; z-index: 5; }
 .gw-env-sparks span { position: absolute; top: -3px; left: -3px; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--area-accent); }
-/* The university: the library demo over one labelled field, the width of
-   the digest row, with its note under it. The label is the mono kicker
-   voice. Stage 300 × 250: the paper card sits top-left and the library card
+/* The university (the account onboarding's screen): the library demo over
+   the link form. Stage 300 × 250: the paper card sits top-left and the library card
    lands over its bottom-right corner — the skeleton lines, never the chip,
    which is the point of the picture. */
 .gw-university { margin-top: var(--space-2); }
@@ -1105,9 +1104,6 @@
 .gw-library-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
 .gw-library-card-bars { display: block; flex: 1; height: 12px; background: repeating-linear-gradient(90deg, var(--text-primary) 0 1px, transparent 1px 3px, var(--text-primary) 3px 5px, transparent 5px 7px); opacity: 0.55; }
 .gw-library-card-ok { display: inline-flex; align-items: center; gap: 3px; font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; color: var(--accent-success); }
-.gw-university-field { display: flex; flex-direction: column; gap: var(--space-2); width: min(400px, 100%); margin: var(--space-4) auto 0; text-align: left; }
-.gw-university-field label { font: var(--mono-label); letter-spacing: var(--mono-track); text-transform: uppercase; color: var(--text-secondary); }
-.gw-university-field .gw-preference-note { margin-top: var(--space-1); }
 /* Support: the words and the browser side by side, browser on the right, so
    the browser can be large. Reversed in CSS rather than in the markup: the
    browser is decoration (aria-hidden) and still comes first where a phone,

@@ -315,9 +315,9 @@
   color: var(--text-secondary);
 }
 
-/* ── University: the welcome's screen, the link in its field's place ──
+/* ── University: the library demo over the link form ──
    InstitutionLink draws the form, and the linked row once linked; here it
-   takes the field column, and each of the library's platforms rises in 50ms
+   takes a field column, and each of the library's platforms rises in 50ms
    after the one before. */
 .onboarding-university .institution-link {
   width: min(400px, 100%);

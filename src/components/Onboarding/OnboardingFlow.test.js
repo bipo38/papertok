@@ -242,24 +242,15 @@ test('SOURCE: the onboarding is seeded from the guest answer', async () => {
   assert.doesNotMatch(code, /saveGuestInterests|clearGuestInterests/, 'the onboarding reads the answer; AuthContext owns its end');
 });
 
-test('SOURCE: the university address from the welcome reaches the link on the last screen', async () => {
+test('SOURCE: the university screen asks for the address itself, in a field that starts empty', async () => {
   const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-  assert.match(code, /const \[guestInstitutionEmail, setGuestInstitutionEmail\] = useState\(\(\) => guestAnswer\?\.institutionEmail \?\? ''\);/);
-  // InstitutionLink links the address on mount: leaving the screen drops it,
-  // so an Unlink is not undone by coming back.
-  assert.match(code, /if \(step === 'university'\) setGuestInstitutionEmail\(''\);/);
-  const bounce = code.match(/if \(err instanceof HandleUnavailableError\) \{[\s\S]*?\n {6}\}/);
-  assert.ok(bounce);
-  assert.match(bounce[0], /setStep\(steps\.indexOf\('handle'\)\);\s*setGuestInstitutionEmail\(''\);/, 'a taken handle goes back to the handle screen');
-  assert.match(bounce[0], /setProfileError\(COPY\.handle\.handleTaken\);/);
-  // The field starts with the welcome's address; the arrival link reads only
-  // the first-visit copy, which leaving the screen clears.
-  assert.match(code, /const \[institutionEmail, setInstitutionEmail\] = useState\(\(\) => guestAnswer\?\.institutionEmail \?\? ''\);/);
+  assert.match(code, /const \[institutionEmail, setInstitutionEmail\] = useState\(''\);/);
+  assert.doesNotMatch(code, /guestAnswer\?\.institutionEmail/, 'the welcome no longer carries an address');
   assert.match(
     code,
-    /\{step === 'university' && \([\s\S]*?<InstitutionLink\s+idPrefix="onboarding-institution"\s+defaultEmail=\{guestInstitutionEmail\}\s+formId=\{UNIVERSITY_FORM_ID\}\s+showSubmit=\{false\}\s+email=\{institutionEmail\}\s+onEmailChange=\{setInstitutionEmail\}\s+onBusyChange=\{setLinkBusy\}\s+linkedNote=\{COPY\.university\.linkedNote\}\s*\/>/,
-    'the link is the university screen\'s, with the address already in it and no button of its own',
+    /\{step === 'university' && \([\s\S]*?<InstitutionLink\s+idPrefix="onboarding-institution"\s+formId=\{UNIVERSITY_FORM_ID\}\s+showSubmit=\{false\}\s+email=\{institutionEmail\}\s+onEmailChange=\{setInstitutionEmail\}\s+onBusyChange=\{setLinkBusy\}\s+linkedNote=\{COPY\.university\.linkedNote\}\s*\/>/,
+    'the link is the university screen\'s, with no button of its own',
   );
   assert.match(code, /linkedNote: 'You can unlink any time in Settings\.',/);
   // The way round the link is there until one is made, whatever is typed.
@@ -451,7 +442,7 @@ test('SOURCE: the about screen is the photo, the name, and a labelled bio with i
   assert.doesNotMatch(block, /email/, 'the avatar\'s initial is the name\'s, never the email\'s: the page is public');
 });
 
-test('SOURCE: the university screen is the welcome\'s, and its platforms stagger only with motion allowed', async () => {
+test('SOURCE: the university screen keeps the welcome\'s layout, and its platforms stagger only with motion allowed', async () => {
   const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
     .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   const block = screenBlock(code, 'university');
