@@ -14,7 +14,6 @@ import {
   Flask,
   GearSix,
   GlobeHemisphereWest,
-  GoogleLogo,
   GraduationCap,
   Key,
   LinkBreak,
@@ -43,6 +42,7 @@ import { CATEGORIES } from '../../data/categories';
 import { PUBLIC_AVATAR_PRESET, prepareProfileImage } from '../../utils/profileImage';
 import { savePublicProfilePhoto } from '../../services/userProfileService';
 import { SIGN_IN_PROVIDERS } from '../../services/authIdentityService';
+import GoogleMark from '../Public/GoogleMark.jsx';
 import InstitutionDialog from '../Institution/InstitutionDialog.jsx';
 import InstitutionPill from '../Institution/InstitutionPill.jsx';
 import { getUiErrorMessage } from '../../utils/errorMessages';
@@ -389,7 +389,7 @@ function ProfileAccountPage() {
     return info?.email || info?.displayName || '';
   };
   const methods = [
-    { id: 'google', providerId: SIGN_IN_PROVIDERS.google, label: 'Google', Icon: GoogleLogo, linked: googleLinked },
+    { id: 'google', providerId: SIGN_IN_PROVIDERS.google, label: 'Google', Icon: GoogleMark, linked: googleLinked },
     { id: 'github', providerId: SIGN_IN_PROVIDERS.github, label: 'GitHub', Icon: GithubMark, linked: gitHubLinked },
   ];
 
