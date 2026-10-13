@@ -355,7 +355,6 @@
   gap: var(--space-1);
   margin-top: auto;
   padding-top: var(--space-3);
-  border-top: 1px solid var(--border-subtle);
 }
 
 .list-card-preview-title {
