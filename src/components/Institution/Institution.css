@@ -82,8 +82,13 @@
   flex-direction: column;
   gap: var(--space-3);
   width: min(460px, calc(100vw - 2 * var(--space-4)));
+  /* Hung from the top rather than centred (the primitive's `top: 50%` and
+     two-axis translate): the platform list arrives after the window opens,
+     and a centred window jumped up by half of what it added. */
+  top: 12dvh;
+  translate: -50% 0;
   /* A long platform list must not push the window past a short screen. */
-  max-height: calc(100dvh - 2 * var(--space-4));
+  max-height: calc(88dvh - var(--space-4));
   overflow-y: auto;
   padding: var(--space-6);
 }

@@ -181,13 +181,28 @@ async function lookUpServices(api, institution) {
  * Worker cannot ask about this library at all; null when the check failed.
  * A failure is not kept, so asking again after one is the retry.
  */
-export function findInstitutionServices(institution, overrides) {
-  const domain = typeof institution?.domain === 'string' ? institution.domain.trim().toLowerCase() : '';
-  if (!domain) return Promise.resolve(null);
-  if (unsupportedDomains.has(domain)) return Promise.resolve(UNSUPPORTED_SERVICES);
+function servicesDomain(institution) {
+  return typeof institution?.domain === 'string' ? institution.domain.trim().toLowerCase() : '';
+}
 
+/**
+ * The answer `findInstitutionServices` would resolve to at once, or undefined
+ * when it would have to ask. A view that opens on the list paints it on its
+ * first frame from here instead of growing a frame later.
+ */
+export function knownInstitutionServices(institution) {
+  const domain = servicesDomain(institution);
+  if (!domain) return undefined;
+  if (unsupportedDomains.has(domain)) return UNSUPPORTED_SERVICES;
   const cached = serviceAnswers.get(domain);
-  if (cached && Date.now() < cached.expiresAt) return Promise.resolve(cached.answer);
+  return cached && Date.now() < cached.expiresAt ? cached.answer : undefined;
+}
+
+export function findInstitutionServices(institution, overrides) {
+  const domain = servicesDomain(institution);
+  if (!domain) return Promise.resolve(null);
+  const known = knownInstitutionServices(institution);
+  if (known) return Promise.resolve(known);
   if (servicesInFlight.has(domain)) return servicesInFlight.get(domain);
 
   const pending = lookUpServices(operations(overrides), { ...institution, domain })

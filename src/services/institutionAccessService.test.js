@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findInstitutionAccess, findInstitutionServices } from './institutionAccessService.js';
+import { findInstitutionAccess, findInstitutionServices, knownInstitutionServices } from './institutionAccessService.js';
 
 const API = 'https://api.test';
 const HOUR = 60 * 60 * 1000;
@@ -224,6 +224,23 @@ test('the same library asked twice at once costs one request', async () => {
   ]);
   assert.equal(api.urls.length, 1);
   assert.equal(second, first);
+});
+
+test('an answer already in hand is there without waiting; one still to ask, a failure or nothing to ask about is not', async () => {
+  // The dialog paints the list on its first frame from this, instead of
+  // opening on "Checking" and doubling in height mid-animation.
+  assert.equal(knownInstitutionServices(institution('known.es')), undefined);
+  assert.equal(knownInstitutionServices(null), undefined);
+  const answer = await findInstitutionServices(institution('known.es'), { ...worker(servicesAnswer(false)), apiBase: API });
+  assert.equal(knownInstitutionServices(institution('KNOWN.es')), answer);
+
+  await findInstitutionServices(institution('known-fail.es'), { ...worker({ status: 502, body: {} }), apiBase: API });
+  assert.equal(knownInstitutionServices(institution('known-fail.es')), undefined);
+
+  await findInstitutionServices(institution('known-unsupported.es'), {
+    ...worker({ status: 404, body: { code: 'INSTITUTION_NOT_SUPPORTED' } }), apiBase: API,
+  });
+  assert.equal(knownInstitutionServices(institution('known-unsupported.es')).unsupported, true);
 });
 
 test('a library the Worker cannot check is said so, not asked again, and not reported as empty-handed', async () => {

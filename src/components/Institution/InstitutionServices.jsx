@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { findInstitutionServices } from '../../services/institutionAccessService.js';
+import { findInstitutionServices, knownInstitutionServices } from '../../services/institutionAccessService.js';
 import { Button } from '../ui/button.jsx';
 import { publisherLogoFor } from './publisherLogos.js';
 import './Institution.css';
@@ -95,7 +95,13 @@ export default function InstitutionServices({ institution }) {
   const [attempt, setAttempt] = useState(0);
   // The last answer and what it answered; a stale one is never shown for
   // another institution, and while a retry runs the previous one stays put.
-  const [answer, setAnswer] = useState(null);
+  // A known answer is there from the first render: the dialog this sits in
+  // opens with a scale-in, and a list landing a frame later doubled its
+  // height mid-animation.
+  const [answer, setAnswer] = useState(() => {
+    const known = knownInstitutionServices({ domain, entityId, rorId });
+    return known ? { subject, attempt: 0, value: known } : null;
+  });
 
   useEffect(() => {
     let current = true;
