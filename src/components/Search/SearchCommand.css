@@ -183,6 +183,16 @@
      rows on purpose, so that a row with no meta line — a suggestion, a
      project with no funder — is one centred line, and a row with one is two;
      the icon and the action sit on the title's line either way. */
+  /* No room for the "↵" in the sheet: as a fourth grid item it would wrap
+     the row. */
+  .sc-sheet [cmdk-item]::after {
+    display: none;
+  }
+
+  .sc-sheet [cmdk-item][data-selected='true'] {
+    box-shadow: inset 3px 0 0 var(--focus-ring);
+  }
+
   .sc-sheet [cmdk-item] {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;

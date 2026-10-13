@@ -17,7 +17,7 @@ import './VisibilityPrompt.css';
  * and the editor), so asking the question costs no extra read. An account that
  * never opens its profile is never asked, and stays exactly as it is.
  *
- * ProfilePage mounts it only while the question is open, so the dialog opens
+ * The profile editor (ProfileEditor.jsx) mounts it only while the question is open, so the dialog opens
  * on mount and owns its `open` flag. Every way out flips it — a saved answer,
  * "Decide later", the X, Escape, the scrim — Base UI plays the leave, and only
  * then `onOpenChangeComplete(false)` hands the outcome to the parent: the

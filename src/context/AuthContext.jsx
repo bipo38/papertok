@@ -259,8 +259,9 @@ export function AuthProvider({ children }) {
    * thrown on: the caller shows them next to the button that was pressed,
    * rather than in the page-wide banner meant for a failed sign-in.
    */
-  const linkGitHubAccount = useCallback(async () => {
-    const result = await linkSignInProvider(SIGN_IN_PROVIDERS.github);
+
+  const linkSignInMethod = useCallback(async (providerId) => {
+    const result = await linkSignInProvider(providerId);
     setSignInProviders(providerIdsOf(result.user || auth.currentUser));
     return result;
   }, []);
@@ -534,7 +535,7 @@ export function AuthProvider({ children }) {
     institution,
     signInWithGoogle,
     signInWithGitHub,
-    linkGitHubAccount,
+    linkSignInMethod,
     linkInstitution,
     unlinkInstitution,
     signOut,
@@ -548,8 +549,8 @@ export function AuthProvider({ children }) {
     retryProfileLoad,
     isDemo: IS_DEMO,
   }), [
-    completeOnboarding, emailDigestPending, error, followedAuthors, institution, linkGitHubAccount,
-    linkInstitution, loading, onboardingComplete, profileLoadError, profilePhoto, readingPreferences,
+    completeOnboarding, emailDigestPending, error, followedAuthors, institution, linkInstitution,
+    linkSignInMethod, loading, onboardingComplete, profileLoadError, profilePhoto, readingPreferences,
     retryProfileLoad, setUserPreferences, settleEmailDigestOptIn, signInProviders, signInWithGitHub,
     signInWithGoogle, signOut, toggleFollowAuthor, unlinkInstitution, updatePreferences,
     updateProfilePhoto, updateReadingPreferences, user, userPreferences,

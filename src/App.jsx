@@ -8,6 +8,7 @@ import { INITIAL_ACCOUNT_SCOPE, accountScopeKey, nextAccountScope } from './util
 import { clearAuthReturn, isInAppPath, offerAuthReturn, takeAuthReturn } from './utils/authReturn.js'
 import RouteFallback from './components/Layout/RouteFallback'
 import RouteAnnouncer from './components/Layout/RouteAnnouncer'
+import { Toaster } from './components/ui/sonner.jsx'
 import NotFoundPage from './components/Layout/NotFoundPage'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LanguageProvider } from './context/LanguageContext'
@@ -61,7 +62,6 @@ const ModerationPage = lazyWithPreload(() => import('./components/Admin/Moderati
 const PublicPaperPage = lazyWithPreload(() => import('./components/Public/PublicPaperPage'))
 const PublicListPage = lazyWithPreload(() => import('./components/Lists/PublicListPage'))
 const PublicProfilePage = lazyWithPreload(() => import('./components/Public/PublicProfilePage'))
-const ProfilePage = lazyWithPreload(() => import('./components/Profile/ProfilePage'))
 const SearchCommand = lazyWithPreload(() => import('./components/Search/SearchCommand'))
 
 // The standalone routes a guest can reach without a session — `/feed` is
@@ -144,7 +144,7 @@ function AppContent() {
   const pageTransitionCustom = usePageTransitionCustom()
   const { user, loading: authLoading, onboardingComplete, profileLoadError } = useAuth()
   const normalizedPathname = location.pathname === '/' ? '/' : location.pathname.replace(/\/+$/, '')
-  const navbarRoutes = ['/feed', '/lists', '/research', '/following', '/profile', '/settings', '/settings/following', '/settings/profile', '/settings/comments']
+  const navbarRoutes = ['/feed', '/lists', '/research', '/following', '/profile', '/settings', '/settings/profile', '/settings/discovery', '/settings/reading', '/settings/notifications', '/settings/privacy', '/settings/following', '/settings/comments']
   // The paper, profile, list and entity pages keep the app chrome for a
   // signed-in user — reaching a paper from Liked, a profile from the follow
   // sheet, a list from someone's shared link, or an author from a card, must
@@ -307,6 +307,8 @@ function AppContent() {
         {'Skip to content'}
       </a>
       <RouteAnnouncer />
+      {/* The one place toasts render; anything calls `toast()` from 'sonner'. */}
+      <Toaster />
       {showNavbar && <Navbar searchOpen={searchOpen} onOpenSearch={openSearch} />}
       {/* Focus target for the skip link and for route changes (RouteAnnouncer).
           A div, not <main>: several routes render their own <main> inside. */}
@@ -436,24 +438,56 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
+          {/* One route per settings page; the bare address opens the first. */}
+          <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
           <Route
-            path="/settings"
+            path="/settings/profile"
             element={
               <ProtectedRoute>
                 <PageTransition>
-                  <SettingsPage />
+                  <SettingsPage page="profile" />
                 </PageTransition>
               </ProtectedRoute>
             }
           />
           <Route
-            path="/settings/profile"
+            path="/settings/discovery"
             element={
-              <PageTransition>
-                <ProtectedRoute>
-                  <ProfilePage />
-                </ProtectedRoute>
-              </PageTransition>
+              <ProtectedRoute>
+                <PageTransition>
+                  <SettingsPage page="discovery" />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/reading"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <SettingsPage page="reading" />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/notifications"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <SettingsPage page="notifications" />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings/privacy"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <SettingsPage page="privacy" />
+                </PageTransition>
+              </ProtectedRoute>
             }
           />
           <Route

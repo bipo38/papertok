@@ -320,6 +320,16 @@ export function isVisibilityChoice(value) {
 }
 
 /** A profile document with no `visibility` predates F8 and is public. */
+/**
+ * Whether the public page shows the account photo. The stored choice wins,
+ * because no photo and a hidden photo look the same on the document; a
+ * profile written before the field existed falls back to whether it has one,
+ * so an old profile without a photo stays without one until its owner says so.
+ */
+export function profileShowsPhoto(profile) {
+  return typeof profile?.showPhoto === 'boolean' ? profile.showPhoto : Boolean(profile?.photo);
+}
+
 export function profileIsPublic(profile) {
   return profile?.visibility !== PROFILE_VISIBILITY.private;
 }
@@ -465,6 +475,7 @@ export async function createUserProfile(input, overrides) {
     handle,
     ...payload,
     ...(institution ? { institution } : {}),
+    showPhoto: input?.showPhoto === true,
     visibility: input.visibility,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -476,7 +487,7 @@ export async function createUserProfile(input, overrides) {
     visibility: input.visibility,
   });
   await commitHandleClaim(batch, handle);
-  return { uid, handle, ...payload, visibility: input.visibility };
+  return { uid, handle, ...payload, showPhoto: input?.showPhoto === true, visibility: input.visibility };
 }
 
 /**
@@ -520,11 +531,32 @@ function stashReference(api, uid) {
   return api.document(api.database, 'users', uid, 'profileStash', 'pinnedLists');
 }
 
+/**
+ * Writes only the fields the caller passes. The two settings pages each own
+ * their fields (Profile & account: name and bio; Privacy: the photo and
+ * contact switches) and each holds its own snapshot of the profile, so a write
+ * carrying the whole profile let one page undo, from a stale copy, what the
+ * other had just saved. An emptied bio or photo is an explicit field delete:
+ * left out of the update, the stored value would survive.
+ *
+ * Callers still pass `pinnedLists`: the rules validate the merged document, so
+ * a stale legacy pin kept in it refuses the whole write (partitionStalePins).
+ */
 export async function updateUserProfile(patch, overrides) {
   const api = operations(overrides);
   requireSupported(api);
   const uid = requireOwner(api);
-  const payload = sanitizeUserProfile(patch);
+  const has = key => Object.prototype.hasOwnProperty.call(patch ?? {}, key);
+  const payload = {};
+  if (has('displayName')) {
+    payload.displayName = cleanString(patch.displayName, USER_PROFILE_LIMITS.displayName);
+    if (!payload.displayName) throw new TypeError('A display name is required.');
+  }
+  if (has('bio')) payload.bio = cleanMultilineString(patch.bio, USER_PROFILE_LIMITS.bio);
+  if (has('photo')) payload.photo = cleanPhoto(patch.photo);
+  if (has('showPhoto')) payload.showPhoto = patch.showPhoto === true;
+  if (has('allowContact')) payload.allowContact = patch.allowContact === true;
+  if (has('pinnedLists')) payload.pinnedLists = sanitizePinnedLists(patch.pinnedLists);
   // Read rather than trust the caller: this runs immediately after
   // `changeUserHandle` in the editor's save, so the handle in hand may be one
   // commit out of date, and the index entry must agree with the stored profile
@@ -533,11 +565,15 @@ export async function updateUserProfile(patch, overrides) {
   const profile = current?.data?.() || {};
   const batch = api.batch(api.database);
 
-  batch.update(profileReference(api, uid), { ...payload, updatedAt: api.now() });
+  const write = { ...payload, updatedAt: api.now() };
+  for (const key of ['bio', 'photo']) {
+    if (key in payload && !payload[key]) write[key] = api.deleteValue();
+  }
+  batch.update(profileReference(api, uid), write);
   if (profile.handle) {
     syncSearchEntry(api, batch, uid, {
       handle: profile.handle,
-      displayName: payload.displayName,
+      displayName: payload.displayName ?? profile.displayName,
       visibility: profile.visibility,
     });
   }
@@ -614,16 +650,25 @@ export async function migrateLegacyPins({ attribute }, overrides) {
 
   const snapshot = await api.getDocument(profileReference(api, uid));
   const profile = snapshot?.data?.() || null;
-  if (!profile) return { migrated: 0, pinnedShareIds: [] };
+  const storedPins = sanitizePinnedShareIds(profile?.pinnedShareIds);
+  // Callers decide from a cached profile, and both settings pages run one, so
+  // only the document read here can say a migration is still owed. A second
+  // run against a migrated profile would commit `pinnedShareIds: []` over the
+  // pins the first run wrote.
+  if (!needsLegacyPinMigration(profile)) {
+    return { migrated: 0, pinnedShareIds: storedPins, attributedShareIds: [] };
+  }
   const pins = sanitizePinnedLists(profile.pinnedLists);
 
   for (const pin of pins) {
     await attribute(pin.shareId, true);
   }
 
-  const pinnedShareIds = pins
-    .slice(0, USER_PROFILE_LIMITS.pinnedShareIds)
-    .map(pin => pin.shareId);
+  // A flag-only legacy profile has no cards to turn into pins; it keeps the
+  // ones it already has.
+  const pinnedShareIds = pins.length
+    ? pins.slice(0, USER_PROFILE_LIMITS.pinnedShareIds).map(pin => pin.shareId)
+    : storedPins;
   const batch = api.batch(api.database);
   batch.update(profileReference(api, uid), {
     pinnedLists: [],
@@ -715,8 +760,11 @@ export async function savePublicProfilePhoto(photo, overrides) {
 
   const value = cleanPhoto(photo);
   const batch = api.batch(api.database);
+  // Only called while the photo is shown, so the choice is written with it:
+  // removing the last photo must not read back as a photo hidden on Privacy.
   batch.update(profileReference(api, uid), {
     photo: value || api.deleteValue(),
+    showPhoto: true,
     updatedAt: api.now(),
   });
   await batch.commit();

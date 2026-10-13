@@ -2,15 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('SOURCE: first-run onboarding asks for a public handle after interests', async () => {
+test('SOURCE: first-run onboarding asks for a profile after interests, private by default', async () => {
   const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
-  assert.match(source, /createUserProfile/);
-  assert.match(source, /VisibilityChoice/);
-  assert.match(source, /PROFILE_VISIBILITY\.public/);
-  assert.match(source, /PROFILE_VISIBILITY\.private/);
-  assert.match(source, /onboardingComplete/);
-  assert.match(source, /Do you want a public profile\?/);
-  assert.doesNotMatch(source, /if \(existingProfile && step > 3\) setStep\(3\)/);
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /createUserProfile/);
+  assert.match(code, /<VisibilityList/);
+  assert.match(code, /PROFILE_VISIBILITY\.public/);
+  assert.match(code, /PROFILE_VISIBILITY\.private/);
+  assert.match(code, /onboardingComplete/);
+  assert.match(code, /Who can see your profile\?/);
+  assert.match(code, /useState\(PROFILE_VISIBILITY\.private\)/, 'Private is the default');
+  assert.match(code, /const steps = existingProfile \? STEPS\.slice\(0, 1\) : STEPS;/);
 });
 
 test('SOURCE: there is no sign-in page; a guest off a protected route gets the feed with the door open', async () => {
@@ -77,31 +79,21 @@ test('SOURCE: a retry after a failed completeOnboarding does not claim the handl
  * account that was already onboarded must discard a stray answer rather than
  * leave it waiting for the next new account on the same device.
  */
-test('SOURCE: the onboarding opens on the profile step, seeded from the guest answer, with the receipt in view', async () => {
+test('SOURCE: the onboarding opens on the profile step, seeded from the guest answer', async () => {
   const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   assert.match(code, /readGuestInterests\(\)/);
   // The guest already answered the interests question; the only step left
-  // for them is the profile. Back still reaches the receipt and the pickers.
-  assert.match(code, /useState\(guestSeed \? 4 : 1\)/, 'a guest with an answer skips straight to the profile step');
-  assert.match(code, /new Set\(guestSeed \?\? \[\]\)/, 'the areas are pre-selected');
+  // for them is the profile. The stepper still reaches the interests.
+  assert.match(code, /useState\(guestSeed \? 2 : 1\)/, 'a guest with an answer skips straight to the profile step');
   // A bounded seed per area, not every category of the area: the feed's
   // window is five wide and its exploration needs siblings left over.
   // An area the welcome narrowed seeds exactly those topics instead.
   assert.match(code, /new Set\(guestSeedCategoriesForAreas\(guestSeed \?\? \[\], GUEST_SEED_PER_AREA, guestSeedTopics\)\)/, 'the seed is the bounded per-area pick, topics included');
   assert.match(code, /const \[guestSeedTopics\] = useState\(\(\) => readGuestInterests\(\)\?\.topics \?\? \[\]\);/);
   assert.doesNotMatch(code, /guestCategoriesForAreas\(/, 'the full union belongs to the guest feed plan, not to the onboarding');
-  // The profile step shows what came along and names the way to change it.
-  assert.doesNotMatch(code, /onboarding-seed-note/, 'the one-line note is gone');
-  assert.match(code, /guestSeed && \(\s*<section className="onboarding-seed-receipt"[\s\S]*?<InterestsReceipt/, 'the profile step shows the receipt of the seeded interests');
-  assert.match(code, /const adjustInterests = \(\) => \{\s*setSeedAdjusted\(true\);\s*setStep\(2\);\s*\};/, 'Adjust interests opens the categories step with the areas kept');
-  assert.match(code, /onClick=\{adjustInterests\}/, 'and the button is wired to it');
-  // One receipt, drawn twice: the confirm step and the profile step render
-  // the same component, so what the profile gets is what both show.
-  assert.equal((code.match(/<InterestsReceipt/g) || []).length, 2, 'both steps use the shared receipt');
-  assert.doesNotMatch(code, /className="onboarding-receipt-row"[\s\S]*className="onboarding-receipt-row"/, 'the rows are rendered in one place only');
-  // The receipt is still a receipt: `completeOnboarding` is the only write,
-  // so what it shows is what the profile gets.
+  // `completeOnboarding` is the only write, so what the summary shows is
+  // what the profile gets.
   assert.doesNotMatch(code, /saveGuestInterests|clearGuestInterests/, 'the onboarding reads the answer; AuthContext owns its end');
 });
 
@@ -158,26 +150,42 @@ test('SOURCE: the profile fields are the shared Input under a Label, with their 
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   assert.match(code, /import \{ Input \} from '\.\.\/ui\/input\.jsx'/);
   assert.match(code, /import \{ Label \} from '\.\.\/ui\/label\.jsx'/);
-  assert.doesNotMatch(code, /<input\b/, 'a bare <input> came back');
   assert.match(code, /<Label htmlFor="onboarding-handle">/);
-  assert.match(code, /<Input\s+id="onboarding-handle"[\s\S]*?aria-invalid=\{Boolean\(handleDraft\) && Boolean\(handleError\)\}\s*aria-describedby="onboarding-handle-hint"/);
+  assert.match(code, /<Input\s+id="onboarding-handle"[\s\S]*?aria-invalid=\{isPublic && \(Boolean\(handleError\) \|\| showHandleRequired\) \? 'true' : undefined\}\s*aria-describedby="onboarding-handle-hint"/);
   assert.match(code, /<Label htmlFor="onboarding-display-name">/);
-  assert.match(code, /<Input\s+id="onboarding-display-name"/);
+  assert.match(code, /<Input\s+id="onboarding-display-name"[\s\S]*?aria-describedby="onboarding-display-name-hint"/);
 });
 
-test('SOURCE: the area cards and category chips are the shared Toggle, styled off data-pressed', async () => {
+test('SOURCE: area cards open their categories, which are real checkboxes', async () => {
   const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-  assert.match(code, /import \{ Toggle \} from '\.\.\/ui\/toggle\.jsx'/);
-  // Base UI writes `aria-pressed` and `data-pressed` on the native button it
-  // renders, so no class mirrors the state by hand any more.
-  assert.match(code, /<Toggle\s[\s\S]*?className="area-card"\s+pressed=\{isSelected\}\s+onPressedChange=\{\(\) => toggleArea\(key\)\}/);
-  assert.match(code, /<Toggle\s[\s\S]*?className="subcat-chip"\s+pressed=\{isSelected\}\s+onPressedChange=\{\(\) => toggleSubcategory\(catId\)\}/);
-  assert.doesNotMatch(code, /aria-pressed=|is-selected/);
-  // "Select all" per area is an action, not a state: it stays a plain button.
-  assert.match(code, /<button\s+type="button"\s+className=\{`subcat-select-all \$\{allSelected \? 'is-active' : ''\}`\}/);
+  // The card opens a popover (a bottom sheet on phones); its pressed look
+  // comes from data-pressed, set while the area has picks.
+  assert.match(code, /<PopoverTrigger className="area-card ob-sheet-card" data-pressed=\{pressed\}/);
+  assert.match(code, /<DrawerContent className="ob-bottom"/);
+  assert.match(code, /<fieldset className="ob-checklist">\s*<legend className="visually-hidden">/);
+  assert.match(code, /<label key=\{id\} className="ob-check-row">\s*<input type="checkbox" checked=\{picked\.has\(id\)\} onChange=\{\(\) => togglePick\(id\)\} \/>/);
+  // "Select all" per area is an action, not a state: a plain button.
+  assert.match(code, /<button type="button" className="ob-text-button" onClick=\{\(\) => toggleAll\(row\)\}>/);
   const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /\.area-card\[data-pressed\]\s*\{/);
-  assert.match(css, /\.subcat-chip\[data-pressed\]\s*\{/);
   assert.doesNotMatch(css, /\.is-selected/);
+});
+
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+
+test('SOURCE: moving between steps puts focus on the new step heading', async () => {
+  const code = stripComments(await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'));
+  // The button that moved the reader unmounts with its step; without this,
+  // focus falls to the page and the new step is never announced.
+  assert.match(code, /if \(direction\) stepHeadingRef\.current\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.equal((code.match(/<h1 className="onboarding-title" ref=\{stepHeadingRef\} tabIndex=\{-1\}>/g) ?? []).length, 2);
+});
+
+test('SOURCE: choosing who can see the profile never raises a required error', async () => {
+  const code = stripComments(await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'));
+  const change = code.match(/onChange=\{next => \{\s*setVisibilityDraft\(next\);[\s\S]*?\}\}/);
+  assert.ok(change, 'the visibility list lost its change handler');
+  assert.match(change[0], /setHandleTouched\(false\)/);
+  assert.match(change[0], /setFinishTried\(false\)/);
 });

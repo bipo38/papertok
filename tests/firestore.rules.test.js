@@ -1004,6 +1004,32 @@ test('F8 (second deploy): a legacy profile stays editable without the field', as
   }));
 });
 
+test('the photo choice is a state the profile can carry', async () => {
+  // The writes the client makes: created with the choice, hidden from
+  // Privacy, and shown again by mirroring an upload.
+  await reset({ aliceProfile: false });
+  const db = asAlice();
+  const create = (showPhoto) => {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'userProfiles', ALICE), {
+      handle: 'alice', displayName: 'Alice', pinnedLists: [], visibility: 'public',
+      showPhoto, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    });
+    batch.set(doc(db, 'handles', 'alice'), { uid: ALICE, createdAt: serverTimestamp() });
+    return batch.commit();
+  };
+  await assertFails(create('yes'));
+  await assertSucceeds(create(true));
+  const profile = doc(db, 'userProfiles', ALICE);
+  await assertSucceeds(updateDoc(profile, {
+    photo: deleteField(), showPhoto: false, updatedAt: serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(profile, {
+    photo: 'https://lh3.googleusercontent.com/a/photo', showPhoto: true, updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(profile, { showPhoto: 1, updatedAt: serverTimestamp() }));
+});
+
 test('F8: hiding pinned lists is a state the profile can carry', async () => {
   await reset();
   await seedOwnedLists(2);

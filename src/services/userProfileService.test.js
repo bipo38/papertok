@@ -32,6 +32,7 @@ import {
   isVisibilityChoice,
   needsVisibilityChoice,
   profileIsPublic,
+  profileShowsPhoto,
   saveProfileVisibility,
   mergeShowcaseCards,
   migrateHiddenPins,
@@ -229,6 +230,67 @@ test('F9: a rename always carries the entry, so the two can never drift', async 
     { handle: 'ada', nameLower: 'taylor swift' },
     'the entry follows the profile — it cannot be left behind advertising the old name',
   );
+});
+
+test('updateUserProfile writes only the fields it is given', async () => {
+  // Each settings page owns its own fields and holds its own snapshot: a save
+  // that rewrote the whole profile let one page undo, from a stale copy, a
+  // switch the other page had just saved.
+  const stored = { handle: 'ada', displayName: 'Ada Lovelace', visibility: 'public', allowContact: true, photo: 'x' };
+  const { api, calls } = fakeApi({
+    getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => stored }),
+  });
+  await updateUserProfile({ allowContact: false, pinnedLists: [] }, api);
+  const [, reference, written] = calls.find(([kind, ref]) => kind === 'update' && ref.includes('userProfiles'));
+  assert.equal(reference, 'db/userProfiles/user-1');
+  assert.deepEqual(written, { allowContact: false, pinnedLists: [], updatedAt: 'SERVER_TIME' });
+  // The index entry still follows the stored name, since this write has none.
+  const entry = calls.find(([, ref]) => ref === 'db/userSearch/user-1');
+  assert.deepEqual(entry[2], { handle: 'ada', nameLower: 'ada lovelace' });
+});
+
+test('an emptied bio or photo is deleted, not silently kept', async () => {
+  const { api, calls } = fakeApi({
+    getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => ({ handle: 'ada', displayName: 'Ada' }) }),
+  });
+  const result = await updateUserProfile({ displayName: 'Ada', bio: '   ', photo: null }, api);
+  const [, , written] = calls.find(([kind]) => kind === 'update');
+  assert.equal(written.bio, 'DELETE_FIELD');
+  assert.equal(written.photo, 'DELETE_FIELD');
+  assert.equal(result.bio, '');
+  assert.equal(result.photo, '');
+  await assert.rejects(() => updateUserProfile({ displayName: '  ' }, api), TypeError);
+});
+
+test('a photo hidden on Privacy and no photo at all read as different states', async () => {
+  // Without the stored choice both are a document with no photo, and an
+  // upload after removing the last photo was kept off the page as "hidden".
+  assert.equal(profileShowsPhoto({ showPhoto: true }), true);
+  assert.equal(profileShowsPhoto({ showPhoto: false, photo: 'x' }), false);
+  // Written before the choice existed: whether it has a photo is all there is.
+  assert.equal(profileShowsPhoto({ photo: 'x' }), true);
+  assert.equal(profileShowsPhoto({}), false);
+
+  const created = fakeApi();
+  await createUserProfile({ handle: 'ada', displayName: 'Ada', visibility: 'public', showPhoto: true }, created.api);
+  assert.equal(created.calls[0][2].showPhoto, true);
+  assert.equal(created.calls[0][2].photo, undefined, 'shown, with no photo to show yet');
+
+  const stored = { handle: 'ada', displayName: 'Ada', photo: 'x', showPhoto: true };
+  const mirrored = fakeApi({
+    getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => stored }),
+  });
+  await savePublicProfilePhoto(null, mirrored.api);
+  const [, , removed] = mirrored.calls.find(([kind]) => kind === 'update');
+  assert.deepEqual(removed, { photo: 'DELETE_FIELD', showPhoto: true, updatedAt: 'SERVER_TIME' });
+
+  const hidden = fakeApi({
+    getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => stored }),
+  });
+  await updateUserProfile({ photo: null, showPhoto: false }, hidden.api);
+  const [, , written] = hidden.calls.find(([kind]) => kind === 'update');
+  assert.equal(written.showPhoto, false);
+  assert.equal(written.photo, 'DELETE_FIELD');
 });
 
 test('an invalid or reserved handle never reaches Firestore', async () => {
@@ -780,13 +842,13 @@ test('an uploaded photo past the public budget is not mirrored', () => {
   assert.equal(publicAvatarFrom(huge, GOOGLE_AVATAR), GOOGLE_AVATAR, 'falls back rather than storing nothing');
 });
 
-test('mirroring the avatar writes one field and only when a profile exists', async () => {
+test('mirroring the avatar writes the photo and that it is shown, only when a profile exists', async () => {
   const { api, calls } = fakeApi({
     getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => ({ handle: 'ada' }) }),
   });
   await savePublicProfilePhoto(GOOGLE_AVATAR, api);
   assert.deepEqual(writtenPaths(calls), ['db/userProfiles/user-1']);
-  assert.deepEqual(Object.keys(calls[0][2]).sort(), ['photo', 'updatedAt']);
+  assert.deepEqual(Object.keys(calls[0][2]).sort(), ['photo', 'showPhoto', 'updatedAt']);
   assert.equal(calls[0][2].photo, GOOGLE_AVATAR);
 });
 
@@ -1038,7 +1100,7 @@ test('SOURCE: the profile editor writes pins as ids and never as cards (F12)', a
   // Same convention as the feed's SOURCE tests: the invariant breaks with an
   // import, so the import is what gets pinned.
   const source = await readFile(
-    new URL('../components/Profile/ProfilePage.jsx', import.meta.url),
+    new URL('../components/Profile/useProfileEditor.js', import.meta.url),
     'utf8',
   );
   assert.match(source, /savePinnedShareIds\(/,
@@ -1206,6 +1268,34 @@ test('migrateLegacyPins stops before the profile write if an attribution fails',
     attribute: async () => { throw new Error('worker down'); },
   }, api), /worker down/);
   assert.equal(calls.length, 0, 'the legacy pins must survive for the retry');
+});
+
+test('migrateLegacyPins re-checks the document it reads and never wipes migrated pins', async () => {
+  // Both settings pages can start it from the same stale cached profile; the
+  // second run must not commit `pinnedShareIds: []` over the first one's pins.
+  const attributions = [];
+  const attribute = async (shareId) => attributions.push(shareId);
+  const { api, calls } = fakeApi({
+    getDocument: async () => ({
+      exists: () => true,
+      data: () => ({ pinnedLists: [], pinnedShareIds: [SHARE_ID, OTHER_SHARE_ID] }),
+    }),
+  });
+  const result = await migrateLegacyPins({ attribute }, api);
+  assert.deepEqual(result, { migrated: 0, pinnedShareIds: [SHARE_ID, OTHER_SHARE_ID], attributedShareIds: [] });
+  assert.deepEqual(attributions, []);
+  assert.deepEqual(calls, [], 'an already-migrated profile is not written');
+
+  // A flag-only legacy profile has no cards to pin, so it keeps its pins.
+  const { api: flagApi, calls: flagCalls } = fakeApi({
+    getDocument: async () => ({
+      exists: () => true,
+      data: () => ({ pinnedLists: [], showPinnedLists: true, pinnedShareIds: [SHARE_ID] }),
+    }),
+  });
+  const flagged = await migrateLegacyPins({ attribute }, flagApi);
+  assert.deepEqual(flagged.pinnedShareIds, [SHARE_ID]);
+  assert.deepEqual(flagCalls[0][2].pinnedShareIds, [SHARE_ID]);
 });
 
 test('migrateHiddenPins only attributes when the owner said to show', async () => {

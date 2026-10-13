@@ -148,7 +148,7 @@ export default function NudgeHost() {
 
   const handleSettings = useCallback(() => {
     close('email-down');
-    navigate('/settings');
+    navigate('/settings/notifications');
   }, [close, navigate]);
 
   const copy = COPY.en;

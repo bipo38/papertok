@@ -322,6 +322,13 @@ test('`/following` passes its own landmark, with its own heading', async () => {
  */
 const OUTLINE_OFF_ON_PURPOSE = new Map([
   [
+    '.account-menu',
+    'the account menu’s popup is a container, not a control: Base UI moves focus on to '
+    + 'its items as soon as it opens, and the items (.account-menu-item, the theme '
+    + 'options) keep the global :focus-visible ring — nothing in AccountMenu.css turns '
+    + 'theirs off. A ring round the whole panel would read as a second, wrong focus',
+  ],
+  [
     '.save-modal-tag-input:focus',
     'the input sits inside .save-modal-tag-editor, which draws a real 2px --focus-ring '
     + 'on :focus-within; keeping both painted two rings around one field',
@@ -449,7 +456,7 @@ test('the focus ring is never painted in the brand orange again', async () => {
  * as a single object rather than as a barred gap.
  */
 
-test('the palette marks its selected row with the inset bar, not only a tint', async () => {
+test('the palette marks its selected row with the enter mark, not only a tint', async () => {
   const command = await readSource(COMMAND_JSX);
 
   const item = command.match(/function CommandItem\(\{[\s\S]*?\n\}/);
@@ -461,26 +468,26 @@ test('the palette marks its selected row with the inset bar, not only a tint', a
   );
 
   // Cut at the string-literal boundaries too: these utilities live inside
-  // quoted arguments to `cn(...)`, so a bare `\S+` swallows the closing
-  // quote and comma of whichever one ends its line.
+  // quoted arguments to `cn(...)`.
   const utilities = (item[0].match(/data-\[selected=true\]:[^\s'"\x60,]+/g) ?? []).join(' ');
 
   assert.match(
     utilities,
-    /data-\[selected=true\]:shadow-\[inset_3px_0_0_var\(--focus-ring\)\]/,
-    'the selected row no longer draws its inset `var(--focus-ring)` bar. Whatever is '
-    + 'left is a background change on its own, and the two backgrounds involved '
-    + '(--bg-secondary over --bg-card) are 1.04:1 apart on ink and 1.07:1 on paper: '
-    + 'the row the arrows are on becomes indistinguishable from the rows they are '
-    + 'not on (WCAG 1.4.11). --focus-ring is the token to use because it is the one '
-    + 'whose job is "you are here" and whose value clears 3:1 on both themes.',
+    /data-\[selected=true\]:after:text-\[var\(--focus-ring\)\]/,
+    'the selected row no longer draws its mark in `var(--focus-ring)`. Whatever is '
+    + 'left is a background change, and a tint on its own is far below the 3:1 WCAG '
+    + '1.4.11 asks of the visual information that identifies a state: the row the '
+    + 'arrows are on becomes indistinguishable from the rows they are not on. '
+    + '--focus-ring is the token whose job is "you are here" and whose value clears '
+    + '3:1 on both themes.',
   );
+  // Empty alt text: the mark is seen, never read into the option's name.
+  assert.match(item[0], /data-\[selected=true\]:after:content-\['↵'_\/_''\]/, 'the mark is the "↵" at the row\'s end, with empty alt text');
   assert.match(
     utilities,
-    /data-\[selected=true\]:bg-secondary/,
-    'the selected row lost its tint. The bar alone marks the edge, but the tint is '
-    + 'what makes the whole row read as one selected object instead of a stray rule '
-    + 'floating in the list.',
+    /data-\[selected=true\]:bg-\[/,
+    'the selected row lost its tint: the mark sits at the end, the tint makes the '
+    + 'whole row read as one selected object.',
   );
 });
 

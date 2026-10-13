@@ -82,7 +82,7 @@ export default function MyCommentsPage() {
 
   const goBack = () => {
     if (location.key !== 'default') navigate(-1);
-    else navigate('/settings');
+    else navigate('/settings/discovery');
   };
 
   // The initial state is already 'loading'; the retry button re-arms it in

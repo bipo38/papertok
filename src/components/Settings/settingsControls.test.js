@@ -60,6 +60,6 @@ test('the settings page uses the shared Switch and RadioGroup, and styles them o
   // Each choice is a real button, so the page's own card rules still apply.
   assert.equal((jsx.match(/render=\{<button type="button" \/>\}\s+nativeButton/g) ?? []).length, 1);
   const css = await read('./SettingsPage.css');
-  assert.match(css, /\.settings-levels button\[data-checked\]\s*\{/);
+  assert.match(css, /\.settings-levels button\[data-checked\][^{,]*\{/);
   assert.doesNotMatch(css, /\.settings-levels button\.is-active|\.settings-language button\.is-active|\.settings-toggle\.is-active|\.settings-toggle > span/);
 });

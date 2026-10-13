@@ -339,6 +339,13 @@
   outline-offset: 2px;
 }
 
+
+[data-sonner-toast]:focus-visible,
+[data-sonner-toaster]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* Text fields are the one place `:focus-visible` fires even for a mouse click
    — the browser assumes typing follows — so the ring boxed every search field
    the moment it was clicked. A field signals focus in the app's own marking
