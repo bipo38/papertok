@@ -19,7 +19,7 @@ const ARXIV_API = 'https://export.arxiv.org/api/query';
 // ahora es la ruta, no el fragmento.
 const PAPER_TOK_URL = 'https://papertok.app/following';
 // Email updates are switched on and off from the Settings page.
-const PAPER_TOK_SETTINGS_URL = 'https://papertok.app/settings';
+const PAPER_TOK_SETTINGS_URL = 'https://papertok.app/settings/notifications';
 const MAX_FOLLOWS = 40;
 const MAX_QUERIED_FOLLOWS = 24;
 const MAX_PREVIEW_ITEMS = 20;

@@ -64,7 +64,7 @@ export default function VisibilityList({
       {options.map(option => {
         const { id, Icon, label, summary } = option;
         const checked = value === id;
-        const press = commitOnPress ? () => { if (id !== value) onChange(id); } : undefined;
+        const press = commitOnPress ? () => onChange(id) : undefined;
         return (
           <div key={id} className={`visibility-list-item${checked ? ' is-checked' : ''}`}>
             <RadioGroupItem

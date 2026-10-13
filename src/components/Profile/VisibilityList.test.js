@@ -19,7 +19,9 @@ test('a choice that saves on the spot waits for a press, not for arrow keys', as
   // focused option keeps focus through the save (no `disabled` while busy).
   const list = stripComments(await readFile(new URL('./VisibilityList.jsx', import.meta.url), 'utf8'));
   assert.match(list, /onValueChange=\{next => \{ if \(!commitOnPress\) onChange\(next\); \}\}/);
-  assert.match(list, /const press = commitOnPress \? \(\) => \{ if \(id !== value\) onChange\(id\); \} : undefined;/);
+  // Every press reaches the owner, the checked option included: a legacy
+  // profile shows Public without having chosen it, and pressing it is the answer.
+  assert.match(list, /const press = commitOnPress \? \(\) => onChange\(id\) : undefined;/);
   assert.match(list, /render=\{<button type="button" className="visibility-list-row" onClick=\{press\} \/>\}/);
   const editor = stripComments(await readFile(new URL('./ProfileEditor.jsx', import.meta.url), 'utf8'));
   const privacyList = editor.match(/<VisibilityList[\s\S]*?\/>/)[0];
