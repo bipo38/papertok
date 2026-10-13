@@ -71,6 +71,8 @@ import FollowSheet from './FollowSheet.jsx';
 import { prefetchFollowList } from './followListLoad.js';
 import { loadProfileFonts } from '../../utils/loadDisplayFonts.js';
 import './PublicProfilePage.css';
+import InstitutionPill from '../Institution/InstitutionPill.jsx';
+import { normalizeInstitution } from '../../services/institutionService.js';
 
 /**
  * The profile page — one page for everyone, with what it shows decided by who
@@ -307,7 +309,7 @@ export default function PublicProfilePage({ handle: handleProp, selfMode = false
   const prefersReducedMotion = useReducedMotion();
   const navigate = useNavigate();
   const {
-    user, profilePhoto, onboardingComplete, profileLoadError,
+    user, profilePhoto, onboardingComplete, profileLoadError, institution,
   } = useAuth();
   const {
     likedPaperIds, personalLibrary, libraryPapers, ensurePersonalLibrary, getCuratedInteractionIds,
@@ -1191,6 +1193,13 @@ export default function PublicProfilePage({ handle: handleProp, selfMode = false
                   <SealCheck size={20} aria-label={copy.verified} />
                 </span>
               )}
+              {/* From the profile's own copy for every reader; the owner also
+                  sees the one on their account while the copy is not there yet
+                  (a profile created before this field existed). */}
+              {(() => {
+                const shown = normalizeInstitution(profile?.institution) || (view.isOwner ? institution : null);
+                return shown && <InstitutionPill institution={shown} />;
+              })()}
             </h1>
             {profile
               ? (

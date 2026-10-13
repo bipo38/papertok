@@ -85,22 +85,36 @@ service cloud.firestore {
     // whole merged document: an allowlist that does not name them denies every
     // write on an account of that vintage, which is what it did.
     //
-    // Tolerated, not writable — see legacyUserFieldsUntouched().
+    // Tolerated, not writable — see frozenUserFieldsUntouched().
     function legacyUserKeys() {
       return ['email', 'displayName', 'photoURL', 'createdAt'];
     }
 
-    // A write may carry the legacy fields along unchanged; it may not add, edit
+    // Fields the Worker writes with the service identity after verifying a
+    // proof the client cannot show these rules: `institution` is the
+    // university a verified address resolved to (worker/institution-link.js).
+    // Tolerated in a merge so the client's own writes keep working once the
+    // field exists; never writable, or anyone could award themselves one.
+    function serviceUserKeys() {
+      return ['institution'];
+    }
+
+    function frozenUserKeys() {
+      return legacyUserKeys().concat(serviceUserKeys());
+    }
+
+    // A write may carry the frozen fields along unchanged; it may not add, edit
     // or drop one. So an account that has them keeps exactly the values it has,
-    // an account that does not can never acquire them, and tolerating the four
-    // keys above does not hand the account holder a writable `email` in a
-    // document that reads like identity. Deleting them is the backfill's job,
-    // and a backfill runs with a service identity, past these rules.
-    function legacyUserFieldsUntouched() {
+    // an account that does not can never acquire them, and tolerating the keys
+    // above does not hand the account holder a writable `email` in a document
+    // that reads like identity. Deleting a legacy field is the backfill's job,
+    // and clearing `institution` is the Worker's; both run with a service
+    // identity, past these rules.
+    function frozenUserFieldsUntouched() {
       return resource == null
-        ? !request.resource.data.keys().hasAny(legacyUserKeys())
+        ? !request.resource.data.keys().hasAny(frozenUserKeys())
         : !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(legacyUserKeys());
+          .hasAny(frozenUserKeys());
     }
 
     match /publicLists/{shareId} {
@@ -329,11 +343,21 @@ service cloud.firestore {
           'allowContact', 'visibility', 'showPinnedLists', 'pinnedLists',
           'pinnedShareIds',
           'followerCount',
+          'institution',
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasAll([
           'handle', 'displayName', 'pinnedLists', 'createdAt', 'updatedAt'
         ])
+        // The institution shown on the page is a copy of the one the Worker
+        // verified on users/{uid} (worker/institution-link.js), and may only
+        // ever equal it: the client copies it when the profile is created,
+        // the Worker rewrites or clears both on link and unlink. One read,
+        // only on a write that carries the field; a missing users document
+        // makes the get() fail, which is a refusal, as it should be.
+        && (!('institution' in request.resource.data)
+          || request.resource.data.institution
+            == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.institution)
         && validString(request.resource.data.handle, 40)
         // Grammar only. The reserved-name check lives on handles/{handle},
         // which every handle here must be backed by; repeating its 44-item
@@ -657,8 +681,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, delete: if ownsUserTree(userId);
       allow create, update: if ownsUserTree(userId)
-        && request.resource.data.keys().hasOnly(userProfileKeys().concat(legacyUserKeys()))
-        && legacyUserFieldsUntouched()
+        && request.resource.data.keys().hasOnly(userProfileKeys().concat(frozenUserKeys()))
+        && frozenUserFieldsUntouched()
         && (!('onboardingComplete' in request.resource.data)
           || request.resource.data.onboardingComplete is bool)
         && (!('preferences' in request.resource.data)
@@ -822,7 +846,7 @@ service cloud.firestore {
       // commit that creates both public documents, and clears it in the same
       // commit that deletes them. That makes "the field is present" and "the
       // public documents exist" the same fact, which is what the delete rule
-      // below leans on. Same shape as legacyUserFieldsUntouched() above.
+      // below leans on. Same shape as frozenUserFieldsUntouched() above.
       function publicShareIdUntouched() {
         return resource == null
           ? !('publicShareId' in request.resource.data)

@@ -24,6 +24,7 @@ import {
   FileText,
   Flask,
   Gear,
+  GraduationCap,
   Graph,
   Heart,
   Heartbeat,
@@ -63,6 +64,9 @@ import { Dialog, DialogClose, DialogContent } from '../ui/dialog.jsx';
 import './PaperCard.css';
 const RelatedPapersSheet = lazy(() => import('./RelatedPapersSheet'));
 import { findOpenAccessCopy } from '../../services/unpaywallService';
+import { findInstitutionAccess } from '../../services/institutionAccessService.js';
+import { institutionLabel } from '../../services/institutionService.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { getRelatedResearchResources } from '../../services/dataCiteService';
 import { getHuggingFaceResearchResources } from '../../services/huggingFaceService';
 import { isOpaqueQueryTopicText, resolvePaperTopic, topicExplorerPath } from '../../utils/topicNavigation';
@@ -70,7 +74,7 @@ import { canRewritePaper } from '../../services/paperRewriteService.js';
 import { getPaperFigures, peekPaperFigures } from '../../services/paperFigureService.js';
 import { CARD_DURATION_MS, tweenScrollTop } from '../../utils/scrollTween.js';
 import { areaAccentForPaper, areaKeyForPaper, areaLabelForPaper } from '../../utils/areaAccent.js';
-import { accessTagForPaper, reviewTagForPaper } from '../../utils/paperStatus.js';
+import { accessStatusForPaper, accessTagForPaper, reviewTagForPaper } from '../../utils/paperStatus.js';
 import { hasUsableAIAbstract } from '../../utils/aiExplanationAccess.js';
 import { buildPaperTopicTags } from '../../utils/paperTopicTags.js';
 
@@ -91,6 +95,7 @@ const STATUS_CHIP_ICONS = {
   preprint: FileText,
   open: LockOpen,
   openCopy: LockOpen,
+  institution: GraduationCap,
   subscription: Lock,
 };
 import { buildFollowReasonLabel } from '../../utils/followingFeed.js';
@@ -442,6 +447,9 @@ const PaperCard = memo(function PaperCard({
   const [isClosingRelatedCard, setIsClosingRelatedCard] = useState(false);
   const [isResolvingAccess, setIsResolvingAccess] = useState(false);
   const [resolvedAccess, setResolvedAccess] = useState({ paperId: null, copy: null });
+  // The reader's library's answer, for this paper at this institution. Keyed by
+  // both, so unlinking or switching accounts discards it without an effect.
+  const [institutionAccess, setInstitutionAccess] = useState({ paperId: null, domain: null, access: null });
   const [linkedResources, setLinkedResources] = useState({ paperId: null, items: [] });
   const [isCardVisible, setIsCardVisible] = useState(false);
   // Whether the clippings are lit. Deliberately NOT `isCardVisible`: the two
@@ -464,6 +472,7 @@ const PaperCard = memo(function PaperCard({
   // played over a card that had already stopped moving.
   const [figures, setFigures] = useState(() => peekPaperFigures(paper)?.slice(0, 4) ?? []);
   const { followedByType, isFollowing } = useFollowing();
+  const { institution } = useAuth();
   const { language } = useLanguage();
   const { trackEvent } = useAnalyticsConsent();
   // Not `useNavigate`: that subscribes every mounted card to the location
@@ -1161,10 +1170,38 @@ const PaperCard = memo(function PaperCard({
 
   // Derived before the handlers that close over it (no-use-before-define).
   const resolvedOpenCopy = resolvedAccess.paperId === paper.id ? resolvedAccess.copy : null;
+  const currentInstitutionAccess = institution
+    && institutionAccess.paperId === paper.id
+    && institutionAccess.domain === institution.domain
+    ? institutionAccess.access
+    : null;
+  // Judged by the record alone, like the chip (`accessTagForPaper`): a free
+  // copy found elsewhere must not decide whether the library is asked, or the
+  // chip and the button would depend on which lookup answered first.
+  const isOpenByRecord = accessStatusForPaper(paper) === 'open';
+
+  // Whether the reader's library has the published version. Asked only for a
+  // paper whose own record is not open, and after the card settles, like the
+  // open-copy lookup above.
+  useEffect(() => {
+    let active = true;
+    if (!isCardIdle || !paper?.doi || !institution?.domain || isOpenByRecord) {
+      return () => { active = false; };
+    }
+    const paperId = paper.id;
+    const { domain } = institution;
+    findInstitutionAccess(paper.doi, institution).then(access => {
+      if (active && access) setInstitutionAccess({ paperId, domain, access });
+    });
+    return () => { active = false; };
+  }, [institution, isCardIdle, isOpenByRecord, paper?.doi, paper?.id]);
 
   const handleOpenPaper = async (event) => {
     event.stopPropagation();
-    const destination = resolvedOpenCopy?.pdfUrl
+    // The library's resolver lands on the publisher's version of record.
+    const destination = currentInstitutionAccess?.status === 'entitled'
+      ? 'publisher'
+      : resolvedOpenCopy?.pdfUrl
       || paper.openAccessPdfUrl
       || isTrustedInlinePdfUrl(paper.pdfUrl)
       ? 'pdf'
@@ -1181,7 +1218,7 @@ const PaperCard = memo(function PaperCard({
     // la cascada daba por bueno el primer candidato con URL: si el navegador la
     // rechazaba -- un `http://` de repositorio, lo más común en las copias que
     // este botón ofrece -- el clic terminaba ahí, en silencio.
-    const openBestTarget = (openCopy) => openFirstTarget(openTargetsForPaper(paper, openCopy), {
+    const openBestTarget = (openCopy) => openFirstTarget(openTargetsForPaper(paper, openCopy, currentInstitutionAccess), {
       inline: (target) => {
         onOpenPdf({ ...paper, ...(openCopy || {}), pdfUrl: target.url, openAccess: true });
         return true;
@@ -1213,7 +1250,11 @@ const PaperCard = memo(function PaperCard({
   // free at the publisher is open access, anything else is a weaker "open
   // version" (`paperStatus.js`).
   const reviewTag = reviewTagForPaper(paper);
-  const accessTag = accessTagForPaper(paper, { openCopy: resolvedOpenCopy });
+  const accessTag = accessTagForPaper(paper, {
+    openCopy: resolvedOpenCopy,
+    institutionAccess: currentInstitutionAccess,
+    institutionLabel: institutionLabel(institution),
+  });
   const researchResources = linkedResources.paperId === paper.id ? linkedResources.items : [];
   const readablePaper = useMemo(() => resolvedOpenCopy ? {
     ...paper,
@@ -1221,6 +1262,7 @@ const PaperCard = memo(function PaperCard({
     openAccessPdfUrl: resolvedOpenCopy.pdfUrl || paper.openAccessPdfUrl,
   } : paper, [paper, resolvedOpenCopy]);
   const canRequestRewrite = canRewritePaper(readablePaper);
+  // Never the library link: it only opens for readers at that institution.
   const bestAvailableUrl = safeExternalUrl(resolvedOpenCopy?.pdfUrl)
     || safeExternalUrl(resolvedOpenCopy?.landingPageUrl)
     || safeExternalUrl(paper.openAccessPdfUrl)

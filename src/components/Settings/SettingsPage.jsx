@@ -43,6 +43,8 @@ import { CATEGORIES } from '../../data/categories';
 import { PUBLIC_AVATAR_PRESET, prepareProfileImage } from '../../utils/profileImage';
 import { savePublicProfilePhoto } from '../../services/userProfileService';
 import { SIGN_IN_PROVIDERS } from '../../services/authIdentityService';
+import InstitutionDialog from '../Institution/InstitutionDialog.jsx';
+import InstitutionPill from '../Institution/InstitutionPill.jsx';
 import { getUiErrorMessage } from '../../utils/errorMessages';
 import { settleWithin } from '../../utils/asyncTiming';
 import {
@@ -177,6 +179,11 @@ const SETTINGS_COPY = {
   unpublishConfirmTitle: 'Unpublish your public profile?',
   unpublishConfirmBody: handle => `Your page will stop existing and @${handle} becomes available to anyone. Your account and your lists stay.`,
   cancel: 'Cancel',
+  institution: 'University',
+  institutionDescription: 'Verify where you study or work by signing in with your university\'s Google account.',
+  institutionLinked: name => `Verified with ${name}.`,
+  institutionLink: 'Link your university',
+  institutionManage: 'Manage your university',
   dangerZone: 'Danger zone',
   dangerZoneDescription: 'Irreversible actions.',
   deleteAccount: 'Delete account',
@@ -264,12 +271,13 @@ function ProfileAccountPage() {
   const navigate = useNavigate();
   const profileInputRef = useRef(null);
   const { language } = useLanguage();
-  const { user, profilePhoto, updateProfilePhoto, signInProviders, linkSignInMethod, signOut } = useAuth();
+  const { user, profilePhoto, updateProfilePhoto, signInProviders, linkSignInMethod, signOut, institution } = useAuth();
   const editor = useProfileEditor();
   const [savingPhoto, setSavingPhoto] = useState(false);
   // The method being connected, while its popup is open.
   const [linking, setLinking] = useState(null);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [institutionOpen, setInstitutionOpen] = useState(false);
 
   const gitHubLinked = signInProviders.includes(SIGN_IN_PROVIDERS.github);
   const googleLinked = signInProviders.includes(SIGN_IN_PROVIDERS.google);
@@ -502,6 +510,23 @@ function ProfileAccountPage() {
               )}
             </div>
           ))}
+          <div className="settings-row">
+            <span className="settings-row-icon is-cyan"><GraduationCap size={20} aria-hidden="true" /></span>
+            <div className="settings-row-content">
+              <div className="settings-row-title-line">
+                <h3>{copy.institution}</h3>
+                {institution && <InstitutionPill institution={institution} />}
+              </div>
+              <p>{institution ? copy.institutionLinked(institution.name) : copy.institutionDescription}</p>
+            </div>
+            <IconAction
+              Icon={institution ? GearSix : LinkSimple}
+              label={institution ? copy.institutionManage : copy.institutionLink}
+              onClick={() => setInstitutionOpen(true)}
+              aria-haspopup="dialog"
+            />
+          </div>
+          <InstitutionDialog open={institutionOpen} onOpenChange={setInstitutionOpen} />
         </div>
       </section>
 

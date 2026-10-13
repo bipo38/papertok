@@ -33,6 +33,17 @@ const ERROR_MESSAGES = {
     AUTH_RECENT_LOGIN_REQUIRED: 'For security, sign in again and then request deletion.',
     CONFIRMATION_REQUIRED: 'Confirm deletion from the settings dialog.',
     ACCOUNT_DELETION_UNSUPPORTED_IN_DEMO: 'Demo mode cannot delete a real account.',
+    AUTH_REQUIRED: 'Sign in again, then retry.',
+    INSTITUTION_EMAIL_INVALID: 'Enter a full email address, like name@university.edu.',
+    INSTITUTION_EMAIL_MISMATCH: 'The Google account you chose does not use that email domain. Try again with your university account.',
+    INSTITUTION_EMAIL_NOT_VERIFIED: 'Google has not verified that address, so it cannot prove an institution.',
+    INSTITUTION_NOT_FOUND: 'No institution is registered for that email domain.',
+    INSTITUTION_LOOKUP_UNAVAILABLE: 'The institution registry could not be reached. Try again in a moment.',
+    INSTITUTION_TOKEN_INVALID: 'The Google sign-in could not be confirmed. Try again.',
+    INSTITUTION_LINK_FAILED: 'Your institution could not be linked. Try again.',
+    INSTITUTION_LINK_UNREACHABLE: 'Your institution could not be linked because the server could not be reached.',
+    INSTITUTION_LINK_NOT_CONFIGURED: 'Institution linking is not available right now.',
+    INSTITUTION_UNSUPPORTED_IN_DEMO: 'Demo mode cannot link an institution.',
   },
 };
 

@@ -1241,3 +1241,94 @@
 .ob-save-error:empty {
   margin: 0;
 }
+
+/* ── The university card (step 4) ──
+   Same frame as a visibility option: sunken ground, hairline, near-square.
+   Linked, it takes the blue of the institution pill. */
+.onboarding-institution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.onboarding-institution.is-linked {
+  border-color: var(--tint-blue-line);
+  background: color-mix(in srgb, var(--tint-blue-bg) 55%, var(--bg-secondary));
+}
+
+.onboarding-institution-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.onboarding-institution-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+.onboarding-institution.is-linked .onboarding-institution-icon {
+  color: var(--tint-blue-fg);
+}
+
+.onboarding-institution-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.onboarding-institution-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.onboarding-institution-title-line h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+
+.onboarding-institution-tag {
+  padding: 2px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font: var(--mono-label);
+  letter-spacing: var(--mono-track);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.onboarding-institution-copy > p {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* The form sits under the copy, aligned with it rather than with the icon. */
+.onboarding-institution .institution-link {
+  margin: 0;
+  padding-left: calc(38px + var(--space-3));
+}
+
+@media (max-width: 600px) {
+  .onboarding-institution .institution-link { padding-left: 0; }
+}

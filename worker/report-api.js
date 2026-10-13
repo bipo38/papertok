@@ -43,6 +43,20 @@ import {
   handleAccountDeletionRequest,
 } from './account-deletion.js';
 import {
+  INSTITUTION_PATHS,
+  InstitutionLinkError,
+  handleInstitutionLinkRequest,
+} from './institution-link.js';
+import {
+  INSTITUTION_ACCESS_PATH,
+  upstreamParams as accessUpstreamParams,
+  InstitutionAccessError,
+  lookupInstitutionAccess,
+  readAccessQuery,
+  readInstitutionQuery,
+} from './institution-access.js';
+import { INSTITUTION_SERVICES_PATH, lookupInstitutionServices } from './institution-services.js';
+import {
   fetchPaperFigures,
   FIGURE_CACHE_SECONDS,
   FIGURE_EMPTY_CACHE_SECONDS,
@@ -100,6 +114,11 @@ const CACHE_SECONDS = 6 * 60 * 60;
 const RELATED_CACHE_SECONDS = 24 * 60 * 60;
 const RELATED_UPSTREAM_LIMIT = 20;
 const CITATION_GRAPH_CACHE_SECONDS = 7 * 24 * 60 * 60;
+// A library's holdings change slowly; `unknown` (no ISSN, or GetFTR down with
+// no resolver behind it) may be an outage, so it is asked again sooner.
+const ACCESS_CACHE_SECONDS = 7 * 24 * 60 * 60;
+const ACCESS_UNKNOWN_CACHE_SECONDS = 6 * 60 * 60;
+const SERVICES_PARTIAL_CACHE_SECONDS = 60 * 60;
 const OA_CACHE_SECONDS = 7 * 24 * 60 * 60;
 // A DOI neither Unpaywall nor Crossref can speak for yet. Uncached, every card
 // that showed it asked again on every visit; a week would hide the paper's
@@ -2610,6 +2629,62 @@ export default {
       } catch (error) {
         const known = error instanceof AccountDeletionError || error instanceof WorkerAuthError;
         return json({ code: known ? error.code : 'ACCOUNT_DELETION_FAILED' }, known ? error.status : 502, {
+          ...corsHeaders(origin, env),
+          'cache-control': 'no-store',
+        });
+      }
+    }
+    if (INSTITUTION_PATHS.has(url.pathname)) {
+      if (!origin || !allowedOrigins(env).has(origin)) {
+        return json({ code: 'ORIGIN_NOT_ALLOWED' }, 403, { 'cache-control': 'no-store' });
+      }
+      try {
+        const payload = await handleInstitutionLinkRequest(request, env);
+        return json(payload, 200, { ...corsHeaders(origin, env), 'cache-control': 'private, no-store' });
+      } catch (error) {
+        const known = error instanceof InstitutionLinkError || error instanceof WorkerAuthError;
+        if (!known) console.error('Institution link failed', error);
+        return json({ code: known ? error.code : 'INSTITUTION_LINK_FAILED' }, known ? error.status : 502, {
+          ...corsHeaders(origin, env),
+          'cache-control': 'no-store',
+        });
+      }
+    }
+    if (url.pathname === INSTITUTION_ACCESS_PATH) {
+      if (request.method !== 'GET') return json({ code: 'METHOD_NOT_ALLOWED' }, 405, corsHeaders(origin, env));
+      if (origin && !allowedOrigins(env).has(origin)) return json({ error: 'Origin not allowed' }, 403);
+      try {
+        // Before the cache: the answer is the institution's and shared, but
+        // only a signed-in reader may draw on the resolvers behind it.
+        await verifyFirebaseIdentity(request, env);
+        const query = readAccessQuery(url.searchParams);
+        const ttl = payload => (payload.status === 'unknown' ? ACCESS_UNKNOWN_CACHE_SECONDS : ACCESS_CACHE_SECONDS);
+        return await cacheResponse(request, origin, env, ttl, () => lookupInstitutionAccess(query, { env }), {
+          canonicalParams: accessUpstreamParams(query, env),
+        });
+      } catch (error) {
+        const known = error instanceof InstitutionAccessError || error instanceof WorkerAuthError;
+        if (!known) console.error('Institution access failed', error);
+        return json({ code: known ? error.code : 'ACCESS_LOOKUP_UNAVAILABLE' }, known ? error.status : 502, {
+          ...corsHeaders(origin, env),
+          'cache-control': 'no-store',
+        });
+      }
+    }
+    if (url.pathname === INSTITUTION_SERVICES_PATH) {
+      if (request.method !== 'GET') return json({ code: 'METHOD_NOT_ALLOWED' }, 405, corsHeaders(origin, env));
+      if (origin && !allowedOrigins(env).has(origin)) return json({ error: 'Origin not allowed' }, 403);
+      try {
+        await verifyFirebaseIdentity(request, env);
+        const query = readInstitutionQuery(url.searchParams);
+        const ttl = payload => (payload.partial ? SERVICES_PARTIAL_CACHE_SECONDS : ACCESS_CACHE_SECONDS);
+        return await cacheResponse(request, origin, env, ttl, () => lookupInstitutionServices(query, { env }), {
+          canonicalParams: accessUpstreamParams(query, env),
+        });
+      } catch (error) {
+        const known = error instanceof InstitutionAccessError || error instanceof WorkerAuthError;
+        if (!known) console.error('Institution services failed', error);
+        return json({ code: known ? error.code : 'ACCESS_LOOKUP_UNAVAILABLE' }, known ? error.status : 502, {
           ...corsHeaders(origin, env),
           'cache-control': 'no-store',
         });

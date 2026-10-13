@@ -589,7 +589,15 @@
 
 /* The preview claims to be the public page, so it wears the public page's
    voices — only smaller: the serif nameplate, and the rounded bio below. */
+.profile-preview-name-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
 .profile-preview-name strong {
+  min-width: 0;
   overflow: hidden;
   font-family: var(--font-serif);
   font-size: var(--fs-lg);
@@ -599,7 +607,7 @@
   white-space: nowrap;
 }
 
-.profile-preview-name span {
+.profile-preview-name > span {
   overflow: hidden;
   color: var(--text-tertiary);
   font-family: var(--font-mono);

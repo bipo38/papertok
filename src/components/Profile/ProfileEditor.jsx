@@ -15,6 +15,7 @@ import {
 } from '@phosphor-icons/react';
 import { USER_PROFILE_LIMITS } from '../../services/userProfileService.js';
 import VisibilityList from './VisibilityList.jsx';
+import InstitutionPill from '../Institution/InstitutionPill.jsx';
 import VisibilityPrompt from './VisibilityPrompt.jsx';
 import { getIcon } from '../../utils/icons.js';
 import { getSiteRootUrl } from '../../utils/publicNavigation.js';
@@ -229,7 +230,7 @@ export function IdentitySection({ form, photo }) {
  * committed light up.
  */
 export function ProfilePreview({ preview }) {
-  const { displayName, bio, handle, initial, avatar, isPrivate, publicPath, lists, pinnedShareIds, savedTick } = preview;
+  const { displayName, bio, handle, initial, avatar, institution, isPrivate, publicPath, lists, pinnedShareIds, savedTick } = preview;
   const flashing = savedTick > 0 ? 'is-flashing' : undefined;
 
   return (
@@ -256,7 +257,10 @@ export function ProfilePreview({ preview }) {
                 : <span>{initial}</span>}
             </div>
             <div className="profile-preview-name">
-              <strong key={`name-${savedTick}`} className={flashing}>{displayName || '—'}</strong>
+              <div className="profile-preview-name-line">
+                <strong key={`name-${savedTick}`} className={flashing}>{displayName || '—'}</strong>
+                {institution && <InstitutionPill institution={institution} />}
+              </div>
               <span key={`handle-${savedTick}`} className={flashing}>@{handle}</span>
             </div>
           </div>

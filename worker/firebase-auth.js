@@ -91,9 +91,19 @@ async function lookupIdentity(token, env) {
  * which a just-revoked token still passes; a route that publishes a document to
  * the open web does not, so those routes ask Identity Toolkit every time.
  */
-export async function verifyFirebaseIdentity(request, env, { allowCache = true } = {}) {
+export async function verifyFirebaseIdentity(request, env, options) {
   const authorization = request.headers.get('authorization') || '';
   const token = authorization.match(/^Bearer\s+([^\s]+)$/i)?.[1] || '';
+  return verifyIdToken(token, env, options);
+}
+
+/**
+ * The same verification for a token that did not arrive as the request's own
+ * credential: the institution link sends a second account's ID token in its
+ * body, and that token has to be checked exactly like the first one, including
+ * the local screen that keeps junk strings away from Identity Toolkit.
+ */
+export async function verifyIdToken(token, env, { allowCache = true } = {}) {
   if (!token || token.length > 8_192) throw new WorkerAuthError('AUTH_REQUIRED', 401);
   if (!env.FIREBASE_WEB_API_KEY) throw new WorkerAuthError('AUTH_NOT_CONFIGURED', 503);
 

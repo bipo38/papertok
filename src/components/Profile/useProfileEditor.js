@@ -121,7 +121,7 @@ let promptDismissedFor = null;
 const copy = MESSAGES;
 
 export function useProfileEditor() {
-  const { user, profilePhoto } = useAuth();
+  const { user, profilePhoto, institution } = useAuth();
 
   useEffect(() => {
     void loadProfileFonts();
@@ -375,6 +375,7 @@ export function useProfileEditor() {
           photo: showPhoto ? appAvatar : '',
           handle: handleCheck.handle,
           visibility: visibilityDraft,
+          institution,
         });
         clearCreationDraft(user.uid);
         setProfile({ ...created, pinnedLists: created.pinnedLists || [] });
@@ -740,6 +741,7 @@ export function useProfileEditor() {
       handle: handleCheck.valid ? handleCheck.handle : (handleDraft || '…'),
       initial: (displayName || user?.email || '?').trim().charAt(0).toUpperCase(),
       avatar: showPhoto ? appAvatar : null,
+      institution,
       // A profile being created shows the choice made for it on Privacy, and
       // is not shown as public before anyone has chosen that.
       isPrivate: isNew
