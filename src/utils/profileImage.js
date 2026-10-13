@@ -39,6 +39,24 @@ export function normalizeProfilePhoto(value, maxLength = MAX_PROFILE_DATA_URL_LE
   return normalized;
 }
 
+/**
+ * The square of the source image to draw, in source pixels. A `crop` from the
+ * picker is clamped inside the image; without one, the centred square.
+ */
+export function squareSource(naturalWidth, naturalHeight, crop) {
+  const side = Math.min(naturalWidth, naturalHeight);
+  if (!crop) {
+    return { x: (naturalWidth - side) / 2, y: (naturalHeight - side) / 2, size: side };
+  }
+  const size = Math.min(Math.max(Number(crop.size) || side, 1), side);
+  const clamp = (value, max) => Math.min(Math.max(Number(value) || 0, 0), max);
+  return {
+    x: clamp(crop.x, naturalWidth - size),
+    y: clamp(crop.y, naturalHeight - size),
+    size,
+  };
+}
+
 function loadImage(objectUrl) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -71,12 +89,11 @@ export async function prepareProfileImage(file, options = {}) {
   const objectUrl = URL.createObjectURL(file);
   try {
     const image = await loadImage(objectUrl);
-    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
-    if (!Number.isFinite(sourceSize) || sourceSize <= 0) {
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    if (!Number.isFinite(side) || side <= 0) {
       throw new Error('The image does not have valid dimensions.');
     }
-    const sourceX = (image.naturalWidth - sourceSize) / 2;
-    const sourceY = (image.naturalHeight - sourceSize) / 2;
+    const source = squareSource(image.naturalWidth, image.naturalHeight, options.crop);
     const canvas = document.createElement('canvas');
     canvas.width = avatarSize;
     canvas.height = avatarSize;
@@ -89,10 +106,10 @@ export async function prepareProfileImage(file, options = {}) {
     context.imageSmoothingQuality = 'high';
     context.drawImage(
       image,
-      sourceX,
-      sourceY,
-      sourceSize,
-      sourceSize,
+      source.x,
+      source.y,
+      source.size,
+      source.size,
       0,
       0,
       avatarSize,

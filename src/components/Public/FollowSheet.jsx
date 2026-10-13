@@ -16,6 +16,7 @@ import {
   readFollowPage,
   resolveRowProfiles,
 } from './followListLoad.js';
+import Handle from '../Profile/Handle.jsx';
 import './FollowSheet.css';
 
 /**
@@ -127,7 +128,7 @@ function Row({ uid, profile, unavailableLabel, onNavigate }) {
         </span>
         <span className="follow-row-body">
           <span className="follow-row-name">{profile.displayName}</span>
-          <span className="follow-row-handle">@{profile.handle}</span>
+          <Handle className="follow-row-handle" handle={profile.handle} />
         </span>
       </Link>
       <span className="follow-row-key" hidden>{uid}</span>

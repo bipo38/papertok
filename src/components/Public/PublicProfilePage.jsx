@@ -72,6 +72,7 @@ import { prefetchFollowList } from './followListLoad.js';
 import { loadProfileFonts } from '../../utils/loadDisplayFonts.js';
 import './PublicProfilePage.css';
 import InstitutionPill from '../Institution/InstitutionPill.jsx';
+import Handle from '../Profile/Handle.jsx';
 import { normalizeInstitution } from '../../services/institutionService.js';
 
 /**
@@ -1204,7 +1205,7 @@ export default function PublicProfilePage({ handle: handleProp, selfMode = false
             {profile
               ? (
                 <p className="public-profile-handle">
-                  <span>@{profile.handle}</span>
+                  <Handle handle={profile.handle} />
                   {joined && <span className="profile-joined">{copy.joined(joined)}</span>}
                   {/* Only the owner ever renders this: for anyone else the
                       document is unreadable, so there is no page to badge. */}

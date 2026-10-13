@@ -1,24 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useCallback, useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
-  ArrowLeft,
-  ArrowRight,
   BookmarkSimple,
-  CaretDown,
   CaretUp,
-  Check,
   Heart,
   SignIn,
-  SkipForward,
   Sparkle,
   UserPlus,
 } from '@phosphor-icons/react';
 import { CATEGORIES } from '../../data/categories.js';
 import { normalizeGuestAreas, normalizeGuestTopics } from '../../utils/guestInterests.js';
 import { WelcomeReadingChoice, WelcomeInboxChoice, WelcomeUniversityChoice, WelcomeProjectSupport } from './GuestWelcomePreferences.jsx';
-import ThemeToggle from '../Layout/ThemeToggle.jsx';
-import { Button } from '../ui/button.jsx';
-import { Toggle } from '../ui/toggle.jsx';
+import { AreaPicker, SubtopicsPicker, WelcomeCopy, WelcomeShell } from './WelcomeShell.jsx';
 import './GuestWelcome.css';
 
 // The first thing a visitor sees: a page, not a sheet over a feed they have
@@ -40,8 +33,6 @@ import './GuestWelcome.css';
 // seconds and then holds still, so nothing moves alongside the copy for
 // longer than WCAG 2.2.2 allows without a pause control. With motion refused,
 // each illustration is drawn in its final state.
-
-const AREA_ENTRIES = Object.entries(CATEGORIES);
 
 // The papers the welcome's two columns scroll through. Decoration, not feed
 // data — the feed only ever shows what the providers return — but real
@@ -96,12 +87,6 @@ const STEPS = ['welcome', 'how', 'topics', 'subtopics', 'reading', 'inbox', 'uni
 // Where the intro's skip lands: the question, not past it.
 const TOPICS_INDEX = STEPS.indexOf('topics');
 
-// How many of an area's topics show before "Show more": two rows of the
-// three-column grid. An area with only a couple past that shows them all —
-// a button to reveal one or two cards costs more than the cards.
-const SUBTOPICS_SHOWN = 6;
-const SUBTOPICS_FOLD_MIN = SUBTOPICS_SHOWN + 3;
-
 // How far apart the three gestures arrive. Each one's illustration starts as
 // it lands, so the last is done by about 4.2s: inside the five seconds.
 const BEAT_STAGGER_MS = 900;
@@ -140,9 +125,6 @@ const COPY = {
       kicker: 'Fine-tune your feed',
       title: 'Anything more specific?',
       lede: 'The more specific, the more personal your feed.',
-      topicsOf: area => `${area} topics`,
-      showMore: n => `Show ${n} more`,
-      showLess: 'Show less',
       cta: 'Continue',
     },
     reading: {
@@ -410,17 +392,6 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
     else next.add(key);
     return next;
   });
-  // The heading of a screen takes focus when the reader moves to it, so a
-  // screen reader starts reading the new screen and a keyboard user starts
-  // tabbing from its top. Not on the first paint: that is the page loading,
-  // and the route announcer already speaks for it.
-  const focusHeadingRef = useRef(false);
-  const headingRef = useCallback((element) => {
-    if (element && focusHeadingRef.current) {
-      focusHeadingRef.current = false;
-      element.focus({ preventScroll: true });
-    }
-  }, []);
 
   const step = STEPS[stepIndex];
   const stepCopy = copy[step];
@@ -433,7 +404,6 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
   const goTo = (nextIndex) => {
     if (nextIndex === stepIndex || nextIndex < 0 || nextIndex >= STEPS.length) return;
     setDirection(nextIndex > stepIndex ? 1 : -1);
-    focusHeadingRef.current = true;
     setStepIndex(nextIndex);
     // A screen is a page: it starts at the top.
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -481,252 +451,78 @@ export default function GuestWelcome({ initialAreas = [], initialTopics = [], in
     else goTo(stepIndex + 1);
   };
 
-  // Variants with `custom`, so the screen that is leaving reads the direction
-  // of the move that is happening now — a prop captured when it last rendered
-  // would send it out the way the PREVIOUS move went.
-  const stepVariants = still
-    ? {
-      enter: { opacity: 1 },
-      center: { opacity: 1 },
-      exit: { opacity: 0, transition: { duration: 0 } },
-    }
-    : {
-      enter: (dir) => ({ opacity: 0, x: dir * 28 }),
-      center: { opacity: 1, x: 0, transition: { duration: 0.34, ease: [0.33, 1, 0.68, 1] } },
-      exit: (dir) => ({ opacity: 0, x: dir * -28, transition: { duration: 0.18, ease: [0.32, 0, 0.67, 0] } }),
-    };
-
   // The areas have to be answered. The topics do not: every area left
   // un-narrowed stands for all of it, so the last button is always live.
   const primaryDisabled = isQuestion && selected.size === 0;
 
-  const copyBlock = (
-    <div className="gw-copy">
-      <p className="gw-kicker">{stepCopy.kicker}</p>
-      <h1 className="gw-title" ref={headingRef} tabIndex={-1}>{stepCopy.title}</h1>
-      {stepCopy.lede && <p className="gw-lede">{stepCopy.lede}</p>}
-    </div>
-  );
+  const copyBlock = <WelcomeCopy kicker={stepCopy.kicker} title={stepCopy.title} lede={stepCopy.lede} />;
 
   return (
-    <motion.main
-      className={`gw${step === 'welcome' ? ' gw--showcase' : ''}`}
-      id="main-content"
-      animate={leaving && !still ? { opacity: 0, y: -16 } : { opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: [0.32, 0, 0.67, 0] }}
-      onAnimationComplete={() => {
-        if (leaving && !still) onComplete?.(answer());
-      }}
+    <WelcomeShell
+      stepKey={step}
+      direction={direction}
+      still={still}
+      leaving={leaving}
+      onLeaveComplete={() => onComplete?.(answer())}
+      className={step === 'welcome' ? 'gw--showcase' : undefined}
+      stageClassName={isQuestion || isPreferences ? 'gw-stage--topics' : undefined}
+      dots={{ count: STEPS.length, index: stepIndex, label: copy.stepOf, ariaLabel: copy.progress }}
+      primary={{ label: stepCopy.cta, onClick: primary, disabled: primaryDisabled }}
+      back={stepIndex > 0 ? { onClick: () => goTo(stepIndex - 1), label: copy.back } : null}
+      // The intro's skip lands on the question, wherever there is intro left.
+      skip={stepIndex < TOPICS_INDEX ? { onClick: () => goTo(TOPICS_INDEX), label: copy.skip } : null}
+      barAction={(
+        <button type="button" className="gw-sign-in" onClick={onSignIn}>
+          <SignIn size={15} aria-hidden="true" />
+          Sign in
+        </button>
+      )}
     >
-      <header className="gw-bar">
-        <div className="gw-wordmark" aria-label="PaperTok">Paper<span>Tok</span></div>
-        <div className="gw-bar-actions">
-          <ThemeToggle className="gw-bar-button" />
-          <button type="button" className="gw-sign-in" onClick={onSignIn}>
-            <SignIn size={15} aria-hidden="true" />
-            Sign in
-          </button>
+      {step === 'welcome' ? (
+        <div className="gw-showcase">
+          <PaperStream
+            papers={SHOWCASE_LEFT}
+            paused={streamsPaused}
+            onToggle={toggleStreams}
+            toggleLabel={copy.pauseMotion}
+            still={still}
+          />
+          {copyBlock}
+          <PaperStream
+            papers={SHOWCASE_RIGHT}
+            reverse
+            paused={streamsPaused}
+            onToggle={toggleStreams}
+            toggleLabel={copy.pauseMotion}
+            still={still}
+          />
         </div>
-      </header>
+      ) : copyBlock}
 
-      <div className={`gw-stage${isQuestion || isPreferences ? ' gw-stage--topics' : ''}`}>
-        {/* No `initial={false}` here: AnimatePresence hands it down to every
-            motion component inside, and the illustrations would mount already
-            finished. */}
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.section
-            key={step}
-            className={`gw-step gw-step--${step}`}
-            custom={direction}
-            variants={stepVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-          >
-            {step === 'welcome' ? (
-              <div className="gw-showcase">
-                <PaperStream
-                  papers={SHOWCASE_LEFT}
-                  paused={streamsPaused}
-                  onToggle={toggleStreams}
-                  toggleLabel={copy.pauseMotion}
-                  still={still}
-                 
-                />
-                {copyBlock}
-                <PaperStream
-                  papers={SHOWCASE_RIGHT}
-                  reverse
-                  paused={streamsPaused}
-                  onToggle={toggleStreams}
-                  toggleLabel={copy.pauseMotion}
-                  still={still}
-                 
-                />
-              </div>
-            ) : copyBlock}
-
-            {step === 'how' && (
-              <ol className="gw-beats">
-                {copy.how.beats.map((beat, index) => (
-                  <Beat key={beat.title} beat={beat} index={index} still={still} />
-                ))}
-              </ol>
-            )}
-
-            {step === 'reading' && <WelcomeReadingChoice level={readingLevel} onChange={setReadingLevel} />}
-            {step === 'inbox' && <WelcomeInboxChoice subscribed={emailDigest} onChange={setEmailDigest} />}
-            {step === 'university' && <WelcomeUniversityChoice email={institutionEmail} onChange={setInstitutionEmail} />}
-            {step === 'support' && <WelcomeProjectSupport />}
-
-            {isTopics && (
-              <div className="gw-areas" role="group" aria-label={copy.topics.areasLabel}>
-                {AREA_ENTRIES.map(([key, area], index) => (
-                  // The shared Toggle: a native button carrying
-                  // `aria-pressed` and `data-pressed`, which the CSS reads.
-                  <Toggle
-                    key={key}
-                    variant="outline"
-                    className="gw-area"
-                    pressed={selected.has(key)}
-                    onPressedChange={() => toggleArea(key)}
-                    style={{ '--area-accent': area.gradient, '--i': index }}
-                  >
-                    <span className="gw-area-icon" aria-hidden="true">
-                      <area.icon size={20} weight={selected.has(key) ? 'fill' : 'regular'} />
-                    </span>
-                    <span className="gw-area-name">{area.label}</span>
-                    <span className="gw-area-box" aria-hidden="true">
-                      <Check size={11} weight="bold" />
-                    </span>
-                  </Toggle>
-                ))}
-              </div>
-            )}
-
-            {/* The areas' specific topics, a screen of their own: the
-                taxonomy's subcategories — the same ids a member's preferences
-                hold and the feed plan routes by — drawn as the same cards as
-                the areas, one group per area ticked on the screen before, in
-                its colour and with its glyph. */}
-            {isSubtopics && AREA_ENTRIES.filter(([key]) => selected.has(key)).map(([key, area]) => {
-              const areaLabel = area.label;
-              const entries = Object.entries(area.subcategories);
-              const folds = entries.length >= SUBTOPICS_FOLD_MIN;
-              const expanded = !folds || expandedAreas.has(key);
-              // Folded, the first few show — plus anything already picked
-              // further down, so a choice never hides behind the fold.
-              const shown = expanded
-                ? entries
-                : entries.filter(([id], index) => index < SUBTOPICS_SHOWN || selectedTopics.has(id));
-              const hidden = entries.length - shown.length;
-              const gridId = `gw-subtopics-${key}`;
-              return (
-                <section key={key} className="gw-subtopics" aria-label={copy.subtopics.topicsOf(areaLabel)}>
-                  <h2 className="gw-subtopics-title" style={{ '--area-accent': area.gradient }}>
-                    <area.icon size={18} weight="fill" aria-hidden="true" />
-                    {areaLabel}
-                  </h2>
-                  <div id={gridId} className="gw-areas" role="group" aria-label={copy.subtopics.topicsOf(areaLabel)}>
-                    {shown.map(([id, sub], index) => {
-                      const pressed = selectedTopics.has(id);
-                      return (
-                        <Toggle
-                          key={id}
-                          variant="outline"
-                          className="gw-area"
-                          pressed={pressed}
-                          onPressedChange={() => toggleTopic(id)}
-                          style={{ '--area-accent': area.gradient, '--i': index }}
-                        >
-                          <span className="gw-area-icon" aria-hidden="true">
-                            <area.icon size={20} weight={pressed ? 'fill' : 'regular'} />
-                          </span>
-                          <span className="gw-area-name">{sub.label}</span>
-                          <span className="gw-area-box" aria-hidden="true">
-                            <Check size={11} weight="bold" />
-                          </span>
-                        </Toggle>
-                      );
-                    })}
-                  </div>
-                  {folds && (hidden > 0 || expanded) && (
-                    <button
-                      type="button"
-                      className="gw-more"
-                      aria-expanded={expanded}
-                      aria-controls={gridId}
-                      onClick={() => toggleExpanded(key)}
-                    >
-                      {expanded ? copy.subtopics.showLess : copy.subtopics.showMore(hidden)}
-                      <CaretDown size={14} weight="bold" aria-hidden="true" className={expanded ? 'is-flipped' : undefined} />
-                    </button>
-                  )}
-                </section>
-              );
-            })}
-          </motion.section>
-        </AnimatePresence>
-      </div>
-
-      <footer className="gw-foot">
-        {/* The dots on every screen, the areas' too: a running count of what
-            is picked used to sit here, and each tile already says whether it
-            is on (`aria-pressed`), to the eye and to a screen reader. */}
-        <ol className="gw-dots" aria-label={copy.progress}>
-            {STEPS.map((name, index) => (
-              <li
-                key={name}
-                className={`gw-dot${index === stepIndex ? ' is-active' : ''}${index < stepIndex ? ' is-done' : ''}`}
-                aria-current={index === stepIndex ? 'step' : undefined}
-              >
-                <span className="gw-dot-label">{copy.stepOf(index + 1, STEPS.length)}</span>
-              </li>
-            ))}
+      {step === 'how' && (
+        <ol className="gw-beats">
+          {copy.how.beats.map((beat, index) => (
+            <Beat key={beat.title} beat={beat} index={index} still={still} />
+          ))}
         </ol>
+      )}
 
-        {/* The way forward and the two quiet ways round it, in one row: back
-            where there is somewhere to go back to, the skip to the question
-            wherever there is intro left. Bare icons, named for assistive tech
-            and in a tooltip; each keeps its slot when absent, so the button
-            never moves between screens. */}
-        <div className="gw-actions">
-          <span className="gw-action-slot">
-            {stepIndex > 0 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="gw-icon-action"
-                onClick={() => goTo(stepIndex - 1)}
-                aria-label={copy.back}
-                title={copy.back}
-              >
-                <ArrowLeft size={20} aria-hidden="true" />
-              </Button>
-            )}
-          </span>
+      {step === 'reading' && <WelcomeReadingChoice level={readingLevel} onChange={setReadingLevel} />}
+      {step === 'inbox' && <WelcomeInboxChoice subscribed={emailDigest} onChange={setEmailDigest} />}
+      {step === 'university' && <WelcomeUniversityChoice email={institutionEmail} onChange={setInstitutionEmail} />}
+      {step === 'support' && <WelcomeProjectSupport />}
 
-          <Button size="lg" onClick={primary} disabled={primaryDisabled} className="gw-primary">
-            {stepCopy.cta}
-            <ArrowRight size={16} aria-hidden="true" />
-          </Button>
+      {isTopics && <AreaPicker selected={selected} onToggle={toggleArea} label={copy.topics.areasLabel} />}
 
-          <span className="gw-action-slot">
-            {stepIndex < TOPICS_INDEX && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="gw-icon-action"
-                onClick={() => goTo(TOPICS_INDEX)}
-                aria-label={copy.skip}
-                title={copy.skip}
-              >
-                <SkipForward size={20} aria-hidden="true" />
-              </Button>
-            )}
-          </span>
-        </div>
-      </footer>
-    </motion.main>
+      {isSubtopics && (
+        <SubtopicsPicker
+          selectedAreas={selected}
+          selectedTopics={selectedTopics}
+          onToggleTopic={toggleTopic}
+          expandedAreas={expandedAreas}
+          onToggleExpanded={toggleExpanded}
+        />
+      )}
+    </WelcomeShell>
   );
 }

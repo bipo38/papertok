@@ -33,6 +33,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAnalyticsConsent } from '../../context/AnalyticsContext';
 import { useOverlayHistory } from '../../hooks/useOverlayHistory.js';
+import Handle from '../Profile/Handle.jsx';
 import {
   USER_SEARCH_DEBOUNCE_MS,
   USER_SEARCH_MIN_LENGTH,
@@ -1147,7 +1148,7 @@ export default function SearchPage({ onSaveToList = () => {}, onAuthRequired = (
                     </div>
                     <div className="search-item-info">
                       <h4>{person.name || person.handle}</h4>
-                      <p>@{person.handle}</p>
+                      <p><Handle handle={person.handle} /></p>
                     </div>
                   </div>
                 ))}

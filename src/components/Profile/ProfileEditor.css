@@ -118,7 +118,9 @@
   display: grid;
   place-items: center;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  /* The sign in the body face, as Handle.css sets it: Plex Mono's "@" is a
+     cramped, low-slung glyph that reads as a smudge next to the letters. */
+  font-family: var(--font-body);
   font-size: var(--fs-base);
   /* Decoration painted over the field: a click on the @ has to reach the
      input underneath it. */

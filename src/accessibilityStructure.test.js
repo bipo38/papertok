@@ -349,7 +349,7 @@ const OUTLINE_OFF_ON_PURPOSE = new Map([
   ],
   [
     '.gw-title:focus-visible',
-    'GuestWelcome moves focus to each step’s h1 (tabIndex={-1}) when the reader moves '
+    'WelcomeShell moves focus to each step’s h1 (tabIndex={-1}) when the reader moves '
     + 'between steps, so a screen reader starts reading the new step and Tab starts from '
     + 'its top. It is never a tab stop of its own; like .gip-title above, a ring round '
     + 'a headline would read as a rendering bug rather than as focus',
@@ -650,8 +650,9 @@ test('the guest feed names itself with a visually hidden h1 inside its own <main
   );
   assert.equal((guest.match(/<main\b/g) || []).length, 1, 'one main, no nesting');
   assert.equal((guest.match(/<h1\b/g) || []).length, 1);
-  // The welcome, which the same route shows first, brings its own pair.
-  const welcome = await readSource(new URL('./components/Public/GuestWelcome.jsx', import.meta.url));
+  // The welcome, which the same route shows first, brings its own pair
+  // through the shared shell.
+  const welcome = await readSource(new URL('./components/Public/WelcomeShell.jsx', import.meta.url));
   assert.equal((welcome.match(/<motion\.main\b/g) || []).length, 1);
   assert.equal((welcome.match(/<h1\b/g) || []).length, 1);
 });

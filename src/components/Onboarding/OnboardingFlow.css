@@ -1,1334 +1,352 @@
 /* ============================================
    Onboarding Flow
 
-   La última pantalla que seguía en el tema oscuro. Lo que había: baldosas
-   grises redondeadas, el titular recortado sobre un degradado que ya no
-   existe, «Seleccionar todo» en un cian que no aparece en ningún otro sitio
-   de la app, y un botón «Siguiente» pintado de tinta sobre tinta — invisible.
-
-   Lo que hay ahora es el vocabulario de LoginPage, que es la pantalla de
-   justo antes: papel cuadriculado, marca amarilla con su desplazamiento de
-   2px, titular en la serif de edición, etiquetas en mono, esquinas casi
-   rectas. Y la regla de la izquierda con la tinta del campo, el mismo recurso
-   que ya usan las baldosas de Mis listas y las filas de paper del perfil.
-
-   Todo el color sale de `variables.css`: no hay ni un hex aquí, así que el
-   tema oscuro entra sin tocar este archivo.
+   The page, the copy, the pickers and the library prop are the welcome's
+   (WelcomeShell, GuestWelcomePreferences and GuestWelcome.css), and so is
+   the idiom: white ground, one prop drawn in hairlines, one plain control
+   in a 400px column under it. What is left here is the onboarding's own:
+   the greeting's written title, the handle screen's browser window, the
+   about screen's photo and name, the fields, and the library's platforms
+   arriving. Tokens only, so the dark theme needs nothing from this file.
    ============================================ */
 
-.onboarding {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  /* PageTransition es una columna flex: sin ancho explícito la ruta se mide
-     contra su contenido y la página salta al montar. */
-  width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  background: var(--bg-primary);
-}
-
-/* ── Papel cuadriculado ──
-   Sólo en el paso 1, que es donde enlaza con la pantalla de acceso; detrás
-   de sesenta chips sería ruido. La misma celda de 28px, y el borde se apaga
-   con el propio fondo de la página en vez de con una máscara, para que un
-   token pueda hacer el trabajo en los dos temas. */
-.onboarding-paper {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.onboarding-paper::before {
-  content: '';
-  position: absolute;
-  inset: -56px;
-  background-image:
-    linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px);
-  background-size: 28px 28px;
-}
-
-.onboarding-paper::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 68% 62% at 50% 38%, transparent 0%, var(--bg-primary) 76%);
-}
-
-/* ── Barra superior ── */
-.onboarding-bar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  height: 57px;
-  padding: 0 var(--space-6);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.onboarding-signout {
-  margin-left: auto;
-}
-
-.onboarding-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.onboarding-mark {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--brand-yellow);
-  color: var(--text-on-brand);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  font-weight: var(--fw-semibold);
-  line-height: 1;
-  letter-spacing: 0.02em;
-  box-shadow: 2px 2px 0 var(--text-primary);
-}
-
-.onboarding-wordmark {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-
-/* El amarillo subraya la marca; nunca lleva el color del texto. */
-.onboarding-wordmark span {
-  box-shadow: inset 0 -0.32em 0 var(--brand-yellow);
-}
-
-/* ── Cuerpo ── */
-.onboarding-body {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-8) var(--space-10);
-}
-
-.onboarding-title {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: 2rem;
-  font-weight: var(--fw-semibold);
-  line-height: 1.12;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-
-.onboarding-title span {
-  box-shadow: inset 0 -0.3em 0 var(--brand-yellow);
-}
-
-.onboarding-lede {
-  margin: var(--space-3) 0 0;
-  max-width: 62ch;
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-  color: var(--text-secondary);
-  text-wrap: pretty;
-}
-
-.onboarding-meter-l {
+/* ── The greeting: the title written out ── */
+.onboarding-script {
   display: block;
-  margin-top: 7px;
-  font: var(--mono-label);
-  letter-spacing: var(--mono-track);
-  text-transform: uppercase;
-  color: var(--text-tertiary);
+  width: min(100%, 44rem);
+  margin-inline: auto;
 }
 
-/* The card and the chip below are the shared Toggle (`ui/toggle.jsx`)
-   wearing these classes. Its utilities live in the `utilities` layer, so
-   these unlayered rules win; the few the card never set are undone here:
-   the fixed row height, the centred main axis (a column card stacks from
-   the top), the nowrap (the description clamps to two lines) and the
-   medium weight (the description reads at regular). */
-.area-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
+.onboarding-script-svg {
+  display: block;
+  width: 100%;
   height: auto;
-  min-height: 140px;
-  white-space: normal;
-  font-weight: var(--fw-regular);
-  padding: 13px 15px 13px var(--space-3);
-  text-align: left;
-  border: 1px solid var(--border-subtle);
-  border-left: 3px solid var(--area-accent, var(--border-default));
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-  cursor: pointer;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  overflow: visible;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .area-card:hover {
-    border-color: var(--border-default);
-    background: var(--bg-sunken);
-  }
-
-  .area-card:hover .area-card-box {
-    border-color: var(--border-strong);
-  }
-}
-
-.area-card[data-pressed] {
-  border-color: var(--border-ink);
-}
-
-.area-card-top {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.area-card-icon {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  color: var(--area-accent, var(--text-tertiary));
-}
-
-.area-card-count {
-  font: var(--mono-label);
-  letter-spacing: var(--mono-track);
-  text-transform: uppercase;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-}
-
-.area-card[data-pressed] .area-card-count {
-  color: var(--text-primary);
-}
-
-.area-card-box {
-  flex: 0 0 auto;
-  margin-left: auto;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-inverse);
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.area-card-box svg {
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.area-card[data-pressed] .area-card-box {
-  border-color: var(--accent-primary);
-  background: var(--accent-primary);
-}
-
-.area-card[data-pressed] .area-card-box svg {
-  opacity: 1;
-}
-
-.area-card-name {
+/* The brand thread under the greeting, drawn once the words are written. */
+.onboarding-script-rule {
   display: block;
-  margin-top: 11px;
-  font-family: var(--font-heading);
-  font-size: 0.9375rem;
-  font-weight: var(--fw-semibold);
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
+  height: 3px;
+  margin-top: var(--space-2);
+  background: var(--brand-yellow);
+  transform-origin: left center;
 }
 
-/* Marcar un área es subrayarla: el mismo trazo que lleva el logotipo, así
-   que seleccionar se parece a marcar una página. */
-.area-card-name span {
-  box-shadow: none;
-  transition: box-shadow var(--transition-base);
+/* ── Profile: the two cards as the welcome's reading levels ──
+   Side by side from 240px each. The screen's heading asks the question, so
+   the group's legend is left to assistive tech. */
+.gw-step--profile {
+  width: min(640px, 100%);
 }
 
-.area-card[data-pressed] .area-card-name span {
-  box-shadow: inset 0 -0.32em 0 var(--brand-yellow);
+.onboarding-profile {
+  text-align: left;
 }
 
-.area-card-desc {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+.onboarding-profile .visibility-choice-legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  margin-top: 6px;
-  font-size: var(--fs-xs);
-  line-height: 1.45;
-  color: var(--text-secondary);
-  text-wrap: pretty;
-}
-
-/* A disabled button does not read better half transparent: it is drawn as
-   what it is, and the reason it is off is written beside it. Overrides the
-   shared Button's 50% fade. */
-.ob-primary:disabled {
-  opacity: 1;
-  border-color: var(--border-subtle);
-  background: var(--bg-secondary);
-  color: var(--text-tertiary);
-}
-
-/* ── Responsive ── */
-@media (pointer: coarse) {
-  .area-card-box {
-    width: 22px;
-    height: 22px;
-  }
-}
-
-@media (max-width: 600px) {
-  .onboarding-bar {
-    height: 52px;
-    padding: 0 var(--space-4);
-  }
-
-  .onboarding-body {
-    padding: var(--space-5) var(--space-4) var(--space-6);
-  }
-
-  .onboarding-title {
-    font-size: 1.625rem;
-  }
-
-  .area-card {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-3);
-    min-height: 56px;
-    padding: 0 var(--space-4) 0 13px;
-    border-width: 0 0 1px;
-    border-left-width: 3px;
-    border-left-style: solid;
-    border-radius: 0;
-  }
-
-  .area-card[data-pressed] {
-    border-color: var(--border-subtle);
-    border-left-color: var(--area-accent, var(--border-default));
-    background: var(--bg-sunken);
-  }
-
-
-  .area-card-top {
-    display: contents;
-  }
-
-  .area-card-icon { order: 1; }
-
-  .area-card-name {
-    order: 2;
-    flex: 1 1 auto;
-    min-width: 0;
-    margin-top: 0;
-    font-size: var(--fs-sm);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .area-card-count { order: 3; }
-
-  .area-card-box {
-    order: 4;
-    margin-left: 0;
-  }
-
-  .area-card-desc {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .area-card,
-  .area-card-box,
-  .area-card-box svg,
-  .area-card-name span {
-    transition: none;
-  }
-}
-
-.onboarding .area-card-name span {
-  position: relative;
-  display: inline-block;
-  box-shadow: none;
-}
-
-.onboarding .area-card-name span::after {
-  content: '';
-  position: absolute;
-  right: -3px;
-  bottom: -0.36em;
-  left: -2px;
-  height: 0.5em;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 16' preserveAspectRatio='none'%3E%3Cpath fill='%23ffd21e' d='M1 9.6C40 7.2 90 5.6 140 5.4c22-.1 42 .6 58 1.8.9.1.9 1.2 0 1.4-24 2.6-60 3.6-98 4.2-36 .6-70 .2-98-1.6-1.2-.1-1.3-1.5 0-1.6Z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path 380ms cubic-bezier(0.23, 1, 0.32, 1);
-  pointer-events: none;
-}
-
-.onboarding .area-card[data-pressed] .area-card-name span {
-  box-shadow: none;
-}
-
-.onboarding .area-card[data-pressed] .area-card-name span::after {
-  clip-path: inset(0 0 0 0);
-}
-
-/* The stroke hangs ~0.36em under the name; the description needs to start
-   clear of it, not on it. */
-.onboarding .area-card-desc {
-  margin-top: 14px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .onboarding .area-card-name span::after {
-    transition: none;
-  }
-}
-
-.ob-meter-sub {
-  display: block;
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-size: var(--fs-xs);
-}
-
-.ob-meter-sub b {
-  color: var(--text-primary);
-  font-weight: var(--fw-semibold);
-  font-variant-numeric: tabular-nums;
-}
-
-.ob-meter-ring {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--space-3);
-  text-align: left;
-}
-
-.ob-meter-ring-dial {
-  position: relative;
-  display: grid;
-  width: 64px;
-  height: 64px;
-  place-items: center;
-}
-
-.ob-meter-ring-dial svg {
-  position: absolute;
-  inset: 0;
-  transform: rotate(-90deg);
-}
-
-.ob-meter-ring-track,
-.ob-meter-ring-fill {
-  fill: none;
-  stroke-width: 5;
-}
-
-.ob-meter-ring-track {
-  stroke: var(--border-default);
-}
-
-.ob-meter-ring-fill {
-  stroke: var(--brand-yellow);
-  stroke-linecap: round;
-  transition: stroke-dashoffset 400ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.ob-meter-ring-n {
-  position: relative;
-  min-width: 3ch;
-  text-align: center;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-  font-variant-numeric: tabular-nums;
-}
-
-.ob-meter-ring-copy {
-  display: grid;
-}
-
-.ob-meter-cell {
-  display: grid;
-}
-
-.ob-meter-cell > * {
-  grid-area: 1 / 1;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
-.ob-meter-sizer {
-  visibility: hidden;
-}
-
-.ob-meter-ring-copy .onboarding-meter-l {
-  margin-top: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ob-meter-ring-fill { transition: none; }
-}
-
-.ob-interests {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: var(--space-10);
-  align-items: start;
-}
-
-.ob-main .onboarding-lede {
-  margin-bottom: var(--space-5);
-}
-
-.ob-summary {
-  position: sticky;
-  top: 24px;
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+.onboarding-profile .visibility-option {
+  border-color: var(--border-strong);
   background: var(--bg-card);
 }
 
-.ob-summary .ob-meter-ring {
-  text-align: left;
+.onboarding-profile .visibility-option[data-checked] {
+  border-color: var(--border-ink);
+  background: var(--bg-sunken);
+  box-shadow: inset 0 -3px 0 var(--text-primary);
 }
 
-.ob-summary-list {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: var(--space-3) 0 0;
-  border-top: 1px solid var(--border-default);
-  list-style: none;
-}
-
-.ob-summary-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-left: 9px;
-  border-left: 3px solid var(--area-accent, var(--border-ink));
-  color: var(--text-secondary);
-  font-size: var(--fs-xs);
-}
-
-/* Before the first pick: a quiet line holding the list's place. */
-.ob-summary-list li.is-empty {
-  border-left-color: var(--border-default);
-  color: var(--text-tertiary);
-}
-
-.ob-summary-list b {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.ob-summary-hint {
-  min-height: 16px;
-  color: var(--text-tertiary);
-  font-size: var(--fs-xs);
-}
-
-.ob-summary .ob-summary-hint:empty {
-  min-height: 0;
-  margin-top: -14px;
-}
-
-.ob-continue {
-  width: 100%;
-  justify-content: center;
-}
-
-/* Step 2 */
-.ob-profile {
-  max-width: 560px;
-}
-
-.ob-fields {
-  display: grid;
-  gap: 18px;
-  margin-top: 22px;
-}
-
-.ob-question {
-  margin-bottom: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-}
-
-.ob-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: 26px;
-}
-
-.ob-profile > .ob-summary-hint {
-  margin-top: 10px;
-  text-align: right;
-}
-
-@media (max-width: 900px) {
-  .ob-interests {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-    padding-bottom: 128px;
-  }
-
-  .ob-summary {
-    position: fixed;
-    top: auto;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: 10px var(--space-4) calc(10px + env(safe-area-inset-bottom));
-    border-width: 1px 0 0;
-    border-radius: 0;
-  }
-
-  .ob-summary .ob-meter-ring-dial,
-  .ob-summary .ob-meter-ring-dial svg {
-    width: 44px;
-    height: 44px;
-  }
-
-  .ob-summary-list {
-    display: none;
-  }
-
-  .ob-summary-hint {
-    flex: 1 1 auto;
-  }
-
-  .ob-continue {
-    width: auto;
-    margin-left: auto;
-  }
-
-}
-
-.ob-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ob-cards > li {
-  display: flex;
-}
-
-.ob-sheet-card {
-  width: 100%;
-  height: 100%;
-  align-items: stretch;
-}
-
-.ob-sheet-card[data-pressed] .area-card-name span::after {
-  clip-path: inset(0 0 0 0);
-}
-
-.ob-sheet-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: var(--space-1);
-}
-
-.ob-text-button {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: var(--fw-semibold);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ob-text-button:hover {
-    color: var(--text-primary);
-  }
-}
-
-.ob-text-button:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.ob .onboarding-body {
-  position: relative;
-  z-index: 1;
-  padding-bottom: var(--space-4);
-}
-
-.ob-side-desc {
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.ob-bottom-body {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-1) 22px 22px;
-}
-
-.ob-popover.ob-popover {
+/* ── The fields: one plain column under the prop ── */
+.onboarding-fields {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: min(560px, calc(100vw - 32px));
-  max-height: min(70vh, calc(var(--available-height, 70vh) - 8px));
-  overflow-y: auto;
-  padding: 14px;
-  border-left: 3px solid var(--area-accent, var(--border-ink));
+  gap: var(--space-5);
+  width: min(400px, 100%);
+  margin: var(--space-6) auto 0;
+  text-align: left;
 }
 
-.ob-popover > .ob-sheet-actions {
-  flex: 0 0 auto;
-}
-
-.ob-popover-title {
-  font-family: var(--font-heading);
-  font-size: 15px;
-  font-weight: var(--fw-semibold);
-}
-
-@media (max-width: 600px) {
-
-  .ob-cards {
-    gap: 0;
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  .ob-sheet-card.ob-sheet-card {
-    align-items: center;
-  }
-
-  .ob-sheet-card .area-card-name {
-    flex: 1 1 0;
-  }
-
-  .ob-summary {
-    flex-wrap: wrap;
-    row-gap: 6px;
-  }
-
-  .ob-summary .ob-summary-hint {
-    order: -1;
-    flex: 1 1 100%;
-  }
-
-  .ob-summary .ob-summary-hint:empty {
-    margin-top: 0;
-    margin-bottom: -6px;
-  }
-
-  .ob-continue.ob-continue {
-    flex: 0 0 auto;
-  }
-}
-
-.ob-step-profile {
-  grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
-}
-
-.ob-step-profile .ob-profile {
-  max-width: 440px;
-}
-
-.ob-summary--profile {
-  gap: var(--space-4);
-  padding: 0;
-  border: 0;
-  background: none;
-}
-
-.ob-summary--profile .ob-actions {
-  margin-top: 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-default);
-}
-
-.ob-preview {
-  display: grid;
+.onboarding-field {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
 }
 
-.ob-preview .profile-preview-card {
-  overflow: hidden;
-}
-
-@media (max-width: 900px) {
-  .ob-step-profile {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ob-summary--profile {
-    padding: 10px var(--space-4) calc(10px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--border-default);
-    background: var(--bg-card);
-  }
-
-  .ob-summary--profile .ob-preview {
-    display: none;
-  }
-
-  .ob-summary--profile .ob-actions {
-    flex: 1 1 100%;
-    padding-top: 0;
-    border-top: 0;
-  }
-}
-
-.ob-checklist {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px 10px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-inline-size: 0;
-}
-
-@media (max-width: 600px) {
-  .ob-checklist {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ob-bottom-body > .ob-checklist {
-    max-height: 50vh;
-    overflow-y: auto;
-  }
-}
-
-.ob-check-row {
-  position: relative;
-  padding-top: 5px;
-  padding-bottom: 5px;
-  display: flex;
-  min-height: 30px;
-  align-items: flex-start;
-  line-height: 1.3;
-  gap: 10px;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ob-check-row:hover {
-    background: var(--bg-sunken);
-    color: var(--text-primary);
-  }
-}
-
-.ob-check-row input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ob-check-box {
-  display: grid;
-  flex: 0 0 auto;
-  margin-top: 1px;
-  width: 18px;
-  height: 18px;
-  place-items: center;
-  border: 1.5px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-inverse);
-}
-
-.ob-check-box svg {
-  opacity: 0;
-}
-
-.ob-check-row input:checked + .ob-check-box {
-  border-color: var(--border-ink);
-  background: var(--brand-yellow);
-  color: var(--text-on-brand);
-}
-
-.ob-check-row input:checked + .ob-check-box svg {
-  opacity: 1;
-}
-
-.ob-check-row:has(input:checked) {
-  color: var(--text-primary);
-}
-
-.ob-check-row input:focus-visible + .ob-check-box {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.ob-preview-handle {
-  color: var(--text-on-brand-soft);
-  font-weight: var(--fw-semibold);
-}
-
-.ob-window {
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
-}
-
-.ob-window-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: var(--space-2) 10px;
-  border-bottom: 1px solid var(--border-default);
-  background: var(--bg-secondary);
-}
-
-.ob-window-dots {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 5px;
-}
-
-.ob-window-dots span {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-
-.ob-window-dots span:nth-child(1) { background: #ff5f57; }
-.ob-window-dots span:nth-child(2) { background: #febc2e; }
-.ob-window-dots span:nth-child(3) { background: #28c840; }
-
-.ob-window-address {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  align-items: center;
-  gap: 5px;
-  padding: var(--space-1) 9px;
-  border-radius: var(--radius-full);
-  background: var(--bg-card);
-  color: var(--text-tertiary);
-}
-
-.ob-window-url {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ob-window .profile-preview-identity {
-  align-items: center;
-}
-
-.ob-window-badge {
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.ob-progress {
-  margin-bottom: 18px;
-}
-
-.ob-progress ol {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ob-progress li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-tertiary);
+/* The labels speak in the welcome's field voice: the mono kicker. */
+.onboarding-field label,
+.onboarding-university .institution-link > label {
   font: var(--mono-label);
   letter-spacing: var(--mono-track);
   text-transform: uppercase;
+  color: var(--text-secondary);
 }
 
-.ob-progress li + li::before {
-  content: '';
-  width: 24px;
-  height: 1px;
-  margin-right: var(--space-1);
+.onboarding-fields [data-slot='input'],
+.onboarding-university .institution-link-input {
+  min-height: 44px;
+}
+
+.onboarding-fields [data-slot='textarea'] {
+  max-height: 30vh;
+}
+
+.onboarding-field-hint {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--text-tertiary);
+}
+
+.onboarding-field-hint.is-error,
+.onboarding-profile-error {
+  color: var(--accent-danger);
+}
+
+/* Under the screen's content, on the profile or the university screen. */
+.onboarding-profile-error {
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.onboarding-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.onboarding-bio-count {
+  font: var(--mono-label);
+  letter-spacing: var(--mono-track);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+/* The handle field's "@", painted inside the field in the body face, as in
+   the profile editor. A click on it has to reach the input underneath. */
+.onboarding-handle-input {
+  position: relative;
+}
+
+.onboarding-handle-input > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--space-3);
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--fs-base);
+  pointer-events: none;
+}
+
+.onboarding-handle-input > input {
+  padding-left: calc(var(--space-3) + 1.1em);
+  font-family: var(--font-mono);
+}
+
+/* ── Handle: the address in a browser window ──
+   The welcome's GitHub window (`.gw-gh*`), here 320px drawn at 1.25, so it
+   is as wide as the field column, and smaller where a phone has less room.
+   The address is the handle being typed: tertiary until it is valid, ink
+   once it is. Under the chrome, the page it opens as a faint skeleton. */
+.gw-gh.onboarding-window {
+  width: 320px;
+  margin-inline: auto;
+  zoom: 1.25;
+}
+
+.onboarding-window .gw-gh-url {
+  position: relative;
+  font-size: 0.6875rem;
+}
+
+.onboarding-window-address {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-tertiary);
+  transition: color 200ms ease;
+}
+
+.onboarding-window-address[data-valid] {
+  color: var(--text-primary);
+}
+
+.onboarding-window-cursor {
+  top: 55%;
+  left: 66%;
+  z-index: 1;
+}
+
+.onboarding-window-page {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  gap: 8px 12px;
+  padding: 16px 14px 20px;
+}
+
+.onboarding-window-avatar {
+  grid-row: 1 / 3;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-sunken);
+}
+
+.onboarding-window-bar {
+  display: block;
+  align-self: end;
+  width: 58%;
+  height: 6px;
+  border-radius: var(--radius-sm);
   background: var(--border-strong);
 }
 
-.ob-progress-n {
-  display: grid;
-  width: 18px;
-  height: 18px;
-  place-items: center;
-  border: 1px solid var(--text-tertiary);
-  border-radius: 50%;
-  font-variant-numeric: tabular-nums;
+.onboarding-window-bar--short {
+  align-self: start;
+  width: 36%;
+  background: var(--border-default);
 }
 
-.ob-progress li.is-active {
+.onboarding-window-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 14px;
+  margin: 10px -14px 0;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.onboarding-window-tabs > span {
+  padding-bottom: 7px;
+}
+
+.onboarding-window-tabs > .is-active {
+  margin-bottom: -1px;
+  border-bottom: 2px solid var(--border-strong);
+}
+
+.onboarding-window-tabs i {
+  display: block;
+  width: 28px;
+  height: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--border-default);
+}
+
+@media (max-width: 480px) {
+  .gw-gh.onboarding-window { zoom: 1; }
+}
+
+@media (max-width: 370px) {
+  .gw-gh.onboarding-window { zoom: 0.86; }
+}
+
+/* ── About: the photo and the name it stands beside ── */
+.onboarding-about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.onboarding-about-name {
+  max-width: 100%;
+  margin: var(--space-3) 0 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-serif);
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
-.ob-progress li.is-active .ob-progress-n {
-  border-color: var(--border-ink);
-  background: var(--brand-yellow);
-  color: var(--text-on-brand);
-}
-
-.ob-progress li.is-done {
-  color: var(--text-secondary);
-}
-
-.ob-progress li.is-done .ob-progress-n {
-  border-color: var(--border-ink);
-  background: var(--border-ink);
-  color: var(--bg-card);
-}
-
-.ob-progress-step {
-  display: inline-flex;
-  min-height: 28px;
+/* The account-photo switch: a row card, as the welcome's digest opt-in. */
+.onboarding-switch {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-normal);
+  text-align: left;
   cursor: pointer;
 }
 
-.ob-progress-step[aria-current='step'] {
-  cursor: default;
+.onboarding-switch:has(:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
-.ob-progress-step:disabled {
-  cursor: not-allowed;
-  opacity: 1;
-}
-
-.ob-progress-step:disabled .ob-progress-n {
-  border-style: dashed;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ob-progress-step:not(:disabled):not([aria-current='step']):hover {
-    color: var(--text-primary);
-  }
-}
-
-.ob-progress-step:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-#onboarding-display-name-hint:empty {
-  margin: 0;
-  min-height: 0;
-}
-
-.ob-summary--profile .ob-actions.is-summary {
-  gap: var(--space-3);
-  padding: 10px 10px 10px var(--space-2);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-}
-
-.ob-back-icon.ob-back-icon {
-  flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-}
-
-.ob-actions-summary {
-  display: grid;
-  flex: 1 1 auto;
-  min-width: 0;
-  gap: 1px;
-}
-
-.ob-actions-summary strong {
-  overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ob-actions-summary span {
-  color: var(--text-tertiary);
-  font-size: var(--fs-xs);
-}
-
-.ob-title-anchor {
-  position: relative;
-  display: inline;
-  box-shadow: none !important;
-}
-
-.ob-title-arrow {
-  position: absolute;
-  z-index: 2;
-  top: 0.25em;
-  left: calc(100% + 8px);
-  width: 140px;
-  height: 98px;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.ob-main .onboarding-lede {
-  max-width: 480px;
-}
-
-.ob-title-arrow path {
-  fill: none;
-  stroke: var(--brand-yellow);
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1 1.2;
-  stroke-dashoffset: 1.06;
-  opacity: 0;
-  animation: ob-arrow-draw 450ms cubic-bezier(0.65, 0, 0.35, 1) 150ms forwards;
-}
-
-.ob-title-arrow.is-drawn path {
-  animation: none;
-  stroke-dashoffset: 0;
-  opacity: 1;
-}
-
-.ob-title-arrow.is-drawn .is-second {
-  opacity: 0.6;
-}
-
-/* The second pass is thinner and fainter, drawn just after the first. */
-.ob-title-arrow .is-second {
-  stroke-width: 1.2;
-  animation-name: ob-arrow-draw-faint;
-  animation-delay: 230ms;
-}
-
-/* The head follows the line, so the arrow is drawn in one gesture. */
-.ob-title-arrow .ob-title-arrow-head {
-  animation-delay: 560ms;
-  animation-duration: 160ms;
-}
-
-@keyframes ob-arrow-draw {
-  from { opacity: 1; stroke-dashoffset: 1.06; }
-  to { opacity: 1; stroke-dashoffset: 0; }
-}
-
-@keyframes ob-arrow-draw-faint {
-  from { opacity: 0.6; stroke-dashoffset: 1.06; }
-  to { opacity: 0.6; stroke-dashoffset: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ob-title-arrow path {
-    animation: none;
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
-
-  .ob-title-arrow .is-second {
-    opacity: 0.6;
-  }
-}
-
-@media (max-width: 900px) {
-  .ob-title-arrow {
-    display: none;
-  }
-}
-
-.ob-preview .profile-preview-name .ob-handle-empty {
-  opacity: 0.6;
-}
-
-.ob-step-in {
-  animation: ob-step-in 240ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
-}
-
-.ob-step-in.is-forward { --ob-step-from: 16px; }
-.ob-step-in.is-back { --ob-step-from: -16px; }
-
-@keyframes ob-step-in {
-  from {
-    opacity: 0;
-    transform: translateX(var(--ob-step-from, 0));
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ob-step-in {
-    animation: ob-step-fade 160ms ease-out backwards;
-  }
-}
-
-@keyframes ob-step-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@media (max-width: 900px) {
-  .ob-step-in {
-    animation-name: ob-step-fade;
-  }
-}
-
-.ob-save-error {
-  color: var(--tint-red-fg);
-  font-size: var(--fs-xs);
-}
-
-.ob-save-error:empty {
-  margin: 0;
-}
-
-/* ── The university card (step 4) ──
-   Same frame as a visibility option: sunken ground, hairline, near-square.
-   Linked, it takes the blue of the institution pill. */
-.onboarding-institution {
+.onboarding-switch-copy {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--bg-secondary);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-
-.onboarding-institution.is-linked {
-  border-color: var(--tint-blue-line);
-  background: color-mix(in srgb, var(--tint-blue-bg) 55%, var(--bg-secondary));
-}
-
-.onboarding-institution-head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-
-.onboarding-institution-icon {
-  display: grid;
-  flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-}
-
-.onboarding-institution.is-linked .onboarding-institution-icon {
-  color: var(--tint-blue-fg);
-}
-
-.onboarding-institution-copy {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  gap: 6px;
   min-width: 0;
 }
 
-.onboarding-institution-title-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.onboarding-institution-title-line h2 {
-  margin: 0;
-  font-family: var(--font-heading);
+.onboarding-switch-label {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0;
   color: var(--text-primary);
 }
 
-.onboarding-institution-tag {
-  padding: 2px 6px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  font: var(--mono-label);
-  letter-spacing: var(--mono-track);
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-
-.onboarding-institution-copy > p {
-  margin: 0;
-  max-width: 52ch;
-  font-size: var(--fs-sm);
-  line-height: 1.55;
+.onboarding-switch-hint {
+  font-size: var(--fs-xs);
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 
-/* The form sits under the copy, aligned with it rather than with the icon. */
-.onboarding-institution .institution-link {
-  margin: 0;
-  padding-left: calc(38px + var(--space-3));
+/* ── University: the welcome's screen, the link in its field's place ──
+   InstitutionLink draws the form, and the linked row once linked; here it
+   takes the field column, and each of the library's platforms rises in 50ms
+   after the one before. */
+.onboarding-university .institution-link {
+  width: min(400px, 100%);
+  margin: var(--space-4) auto 0;
+  text-align: left;
 }
 
-@media (max-width: 600px) {
-  .onboarding-institution .institution-link { padding-left: 0; }
+.onboarding-university .institution-link.is-linked,
+.onboarding-university .institution-services-list > li {
+  animation: onboarding-rise 450ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.onboarding-university .institution-services-list > li:nth-child(2) { animation-delay: 50ms; }
+.onboarding-university .institution-services-list > li:nth-child(3) { animation-delay: 100ms; }
+.onboarding-university .institution-services-list > li:nth-child(4) { animation-delay: 150ms; }
+.onboarding-university .institution-services-list > li:nth-child(5) { animation-delay: 200ms; }
+.onboarding-university .institution-services-list > li:nth-child(6) { animation-delay: 250ms; }
+.onboarding-university .institution-services-list > li:nth-child(n + 7) { animation-delay: 300ms; }
+
+@keyframes onboarding-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-university .institution-link.is-linked,
+  .onboarding-university .institution-services-list > li {
+    animation: none;
+  }
 }

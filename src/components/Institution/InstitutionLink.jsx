@@ -13,7 +13,7 @@ import './Institution.css';
 const COPY = {
   email: 'University email',
   placeholder: 'name@university.edu',
-  hint: 'Google opens so you can sign in with that account. PaperTok keeps the institution, not the address.',
+  hint: 'When you continue, Google opens so you can sign in with that account. PaperTok keeps the institution, not the address.',
   submit: 'Continue with Google',
   submitting: 'Verifying…',
   linked: name => `Verified with ${name}.`,
@@ -33,10 +33,30 @@ const COPY = {
  * link needs no Google window — the Worker checks the session itself — so
  * it is completed here on arrival, with the field, button and feedback
  * showing what happened exactly as a press would.
+ *
+ * Settings uses it as it is: the field and its own Google button. A caller
+ * that draws the submit itself (the onboarding's primary, in the page's foot)
+ * passes `showSubmit={false}` and a `formId` for its button's `form`, owns
+ * the address through `email` / `onEmailChange` so it can tell whether one is
+ * typed, and hears `onBusyChange` to say "Verifying…" while Google is open.
+ * There, `defaultEmail` is only the address to link on arrival, and
+ * `linkedNote` adds a sentence after "Verified with …" once linked.
  */
-export default function InstitutionLink({ idPrefix = 'institution', defaultEmail = '' }) {
+export default function InstitutionLink({
+  idPrefix = 'institution',
+  defaultEmail = '',
+  formId,
+  showSubmit = true,
+  email: controlledEmail,
+  onEmailChange,
+  onBusyChange,
+  linkedNote,
+}) {
   const { user, institution, linkInstitution, unlinkInstitution } = useAuth();
-  const [email, setEmail] = useState(defaultEmail);
+  const [ownEmail, setOwnEmail] = useState(defaultEmail);
+  const controlled = controlledEmail !== undefined;
+  const email = controlled ? controlledEmail : ownEmail;
+  const setEmail = controlled ? onEmailChange : setOwnEmail;
   // The no-window case, decided once on arrival: the session's own verified
   // address is the one the welcome took. Any other address keeps the press,
   // because Google's window has to come from a gesture. Busy from the first
@@ -49,6 +69,7 @@ export default function InstitutionLink({ idPrefix = 'institution', defaultEmail
       : '';
   });
   const [busy, setBusy] = useState(Boolean(arrival));
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const [feedback, setFeedback] = useState(null);
   // Linking swaps the form for the linked row and unlinking swaps it back, so
   // the control that had focus is gone either way. Focus lands on the control
@@ -84,7 +105,7 @@ export default function InstitutionLink({ idPrefix = 'institution', defaultEmail
     } finally {
       setBusy(false);
     }
-  }, [linkInstitution]);
+  }, [linkInstitution, setEmail]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -139,7 +160,7 @@ export default function InstitutionLink({ idPrefix = 'institution', defaultEmail
     return (
       <div className="institution-link is-linked">
         <InstitutionPill institution={institution} />
-        <p className="institution-link-copy">{COPY.linked(institution.name)}</p>
+        <p className="institution-link-copy">{COPY.linked(institution.name)}{linkedNote ? ` ${linkedNote}` : ''}</p>
         <Button ref={unlinkRef} type="button" variant="outline" size="sm" onClick={handleUnlink} disabled={busy}>
           {busy ? COPY.unlinking : COPY.unlink}
         </Button>
@@ -152,7 +173,7 @@ export default function InstitutionLink({ idPrefix = 'institution', defaultEmail
   return (
     // Nothing is disabled while Google is open: a disabled control drops the
     // focus it had, and the error that may come back would land on nobody.
-    <form className="institution-link" onSubmit={handleSubmit} noValidate aria-busy={busy || undefined}>
+    <form id={formId} className="institution-link" onSubmit={handleSubmit} noValidate aria-busy={busy || undefined}>
       <Label htmlFor={inputId}>{COPY.email}</Label>
       <div className="institution-link-row">
         <Input
@@ -175,10 +196,12 @@ export default function InstitutionLink({ idPrefix = 'institution', defaultEmail
           aria-invalid={feedback?.tone === 'error' ? 'true' : undefined}
           aria-describedby={feedback?.tone === 'error' ? `${hintId} ${feedbackId}` : hintId}
         />
-        <Button type="submit" variant="outline" className="institution-link-submit" aria-disabled={busy || undefined}>
-          {busy ? <span className="institution-link-spinner" aria-hidden="true" /> : <GoogleMark size={16} />}
-          {busy ? COPY.submitting : COPY.submit}
-        </Button>
+        {showSubmit && (
+          <Button type="submit" variant="outline" className="institution-link-submit" aria-disabled={busy || undefined}>
+            {busy ? <span className="institution-link-spinner" aria-hidden="true" /> : <GoogleMark size={16} />}
+            {busy ? COPY.submitting : COPY.submit}
+          </Button>
+        )}
       </div>
       <p id={hintId} className="institution-link-hint">{COPY.hint}</p>
       {feedbackNode}

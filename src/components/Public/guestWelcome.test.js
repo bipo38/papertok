@@ -8,6 +8,8 @@ const stripComments = (source) => source
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const jsxPromise = read('./GuestWelcome.jsx').then(stripComments);
+// The page, its foot and the pickers the welcome draws through.
+const shellPromise = read('./WelcomeShell.jsx').then(stripComments);
 const cssPromise = read('./GuestWelcome.css').then(stripComments);
 
 /**
@@ -17,15 +19,16 @@ const cssPromise = read('./GuestWelcome.css').then(stripComments);
  * has to be answered before the feed.
  */
 test('the welcome retains its intro and topics before personalization and optional support', async () => {
-  const jsx = await jsxPromise;
+  const [jsx, shell] = await Promise.all([jsxPromise, shellPromise]);
   assert.match(jsx, /const STEPS = \['welcome', 'how', 'topics', 'subtopics', 'reading', 'inbox', 'university', 'support'\];/);
-  assert.match(jsx, /<motion\.main\s+className=\{`gw\$\{/, 'the welcome brings its own <main>, the feed page is not mounted under it');
-  assert.doesNotMatch(jsx, /ui\/dialog|<Dialog/, 'a first visit is not a dialog over the feed');
+  assert.match(jsx, /return \(\s*<WelcomeShell\b/, 'the welcome is drawn in the shared page');
+  assert.match(shell, /<motion\.main\s+className=\{`gw\$\{/, 'the welcome brings its own <main>, the feed page is not mounted under it');
+  assert.doesNotMatch(jsx + shell, /ui\/dialog|<Dialog/, 'a first visit is not a dialog over the feed');
   // The feed is built from the answer, so the last step cannot be passed
   // without one; the first two can be skipped straight to it.
   assert.match(jsx, /const primaryDisabled = isQuestion && selected\.size === 0;/);
   assert.match(jsx, /const finish = \(\) => \{\s*if \(selected\.size === 0 \|\| leaving\) return;/);
-  assert.match(jsx, /onClick=\{\(\) => goTo\(TOPICS_INDEX\)\}/, 'the skip goes to the areas step, not past it');
+  assert.match(jsx, /skip=\{stepIndex < TOPICS_INDEX \? \{ onClick: \(\) => goTo\(TOPICS_INDEX\), label: copy\.skip \} : null\}/, 'the skip goes to the areas step, not past it');
   assert.match(jsx, /const TOPICS_INDEX = STEPS\.indexOf\('topics'\);/);
 });
 
@@ -37,12 +40,13 @@ test('the welcome retains its intro and topics before personalization and option
  * the feed yours, not as a fallback.
  */
 test('the specific topics are their own screen, in the area cards, and never block the feed', async () => {
-  const jsx = await jsxPromise;
+  const [jsx, shell] = await Promise.all([jsxPromise, shellPromise]);
   assert.match(jsx, /const primary = \(\) => \{\s*if \(step === 'support'\) finish\(\);\s*else goTo\(stepIndex \+ 1\);/);
-  const subtopics = jsx.slice(jsx.indexOf('{isSubtopics && AREA_ENTRIES'), jsx.indexOf('</motion.section>'));
+  assert.match(jsx, /\{isSubtopics && \(\s*<SubtopicsPicker\b/, 'the topics screen draws the shared picker');
+  const subtopics = shell.slice(shell.indexOf('export function SubtopicsPicker'));
   assert.match(subtopics, /className="gw-areas"/, 'the same grid as the areas');
   assert.match(subtopics, /className="gw-area"/, 'the same cards as the areas');
-  assert.doesNotMatch(jsx, /gw-chip|gw-refine/, 'the chip row is back');
+  assert.doesNotMatch(jsx + shell, /gw-chip|gw-refine/, 'the chip row is back');
   assert.match(jsx, /cta: 'Continue',/);
   assert.match(jsx, /lede: 'The more specific, the more personal your feed\.'/);
 });
@@ -54,14 +58,16 @@ test('the specific topics are their own screen, in the area cards, and never blo
  * move from one screen to the next.
  */
 test('back and skip are named icon buttons either side of the way forward', async () => {
-  const jsx = await jsxPromise;
-  const actions = jsx.match(/<div className="gw-actions">[\s\S]*?\n {8}<\/div>/)?.[0] ?? '';
+  const [jsx, shell] = await Promise.all([jsxPromise, shellPromise]);
+  const actions = shell.match(/<div className="gw-actions">[\s\S]*?\n {8}<\/div>/)?.[0] ?? '';
   assert.ok(actions, 'the action row is there');
-  const order = ['aria-label={copy.back}', 'className="gw-primary"', 'aria-label={copy.skip}'].map(needle => actions.indexOf(needle));
+  const order = ['aria-label={back.label}', 'className="gw-primary"', 'aria-label={skip.label}'].map(needle => actions.indexOf(needle));
   assert.ok(order.every(position => position >= 0), 'back, the button and skip are all in the row');
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order: back, button, skip');
-  assert.match(actions, /title=\{copy\.back\}/);
-  assert.match(actions, /title=\{copy\.skip\}/);
+  assert.match(actions, /title=\{back\.label\}/);
+  assert.match(actions, /title=\{skip\.label\}/);
+  // The welcome names back here; the skip's name is pinned with its target above.
+  assert.match(jsx, /back=\{stepIndex > 0 \? \{ onClick: \(\) => goTo\(stepIndex - 1\), label: copy\.back \} : null\}/);
   assert.equal((actions.match(/<span className="gw-action-slot">/g) ?? []).length, 2, 'both sides keep a slot');
   const css = await cssPromise;
   assert.match(css, /\.gw-action-slot \{[^}]*flex: 0 0 44px;/);
@@ -89,13 +95,16 @@ test('the three gestures sit in a row and arrive one after another', async () =>
  * reading the new step. Not on first paint: that is the page loading.
  */
 test('each step heading takes focus when the reader moves to it', async () => {
-  const jsx = await jsxPromise;
+  const [jsx, shell] = await Promise.all([jsxPromise, shellPromise]);
   // One heading, drawn by the template every screen shares, so no screen
   // can ship without it.
-  const headings = jsx.match(/<h1 className="gw-title" ref=\{headingRef\} tabIndex=\{-1\}>/g) ?? [];
+  const headings = shell.match(/<h1 className="gw-title" tabIndex=\{-1\}>/g) ?? [];
   assert.equal(headings.length, 1, 'the screens share one focusable h1');
-  assert.match(jsx, /const focusHeadingRef = useRef\(false\);/, 'the first paint does not steal focus');
-  assert.match(jsx, /focusHeadingRef\.current = true;\s*setStepIndex\(nextIndex\);/);
+  assert.doesNotMatch(jsx, /<h1\b/, 'the welcome draws its heading through WelcomeCopy');
+  // Each new screen's section, as it mounts, focuses its heading; the first
+  // section to mount is the first paint and does not steal focus.
+  assert.match(shell, /ref=\{focusNewHeading\}/);
+  assert.match(shell, /if \(shownSection\.current && shownSection\.current !== section\) \{\s*section\.querySelector\('\.gw-title'\)\?\.focus\(\{ preventScroll: true \}\);/);
   const css = await cssPromise;
   assert.match(css, /\.gw-title:focus-visible \{\s*outline: none;\s*\}/);
 });
@@ -107,15 +116,15 @@ test('each step heading takes focus when the reader moves to it', async () => {
  * papers never travelled from the sources to the feed.
  */
 test('the steps presence does not switch off the illustrations’ entrance', async () => {
-  const jsx = await jsxPromise;
-  const presence = jsx.match(/<AnimatePresence[^>]*>/g) ?? [];
+  const shell = await shellPromise;
+  const presence = shell.match(/<AnimatePresence[^>]*>/g) ?? [];
   assert.ok(presence.length > 0, 'the steps still cross-fade through AnimatePresence');
   for (const tag of presence) {
     assert.doesNotMatch(tag, /initial=\{false\}/, `${tag} would freeze every illustration on its last frame`);
   }
   // And the leaving step reads the direction of the move happening now.
-  assert.match(jsx, /exit: \(dir\) => \(\{ opacity: 0, x: dir \* -28/);
-  assert.match(jsx, /custom=\{direction\}\s+variants=\{stepVariants\}/);
+  assert.match(shell, /exit: \(dir\) => \(\{ opacity: 0, x: dir \* -28/);
+  assert.match(shell, /custom=\{direction\}\s+variants=\{stepVariants\}/);
 });
 
 /**
@@ -204,27 +213,30 @@ test('the welcome is one centred column with the button centred at the foot', as
  * which grid it opens, to assistive tech.
  */
 test('long topic groups fold behind show more without hiding a pick', async () => {
-  const jsx = await jsxPromise;
-  const shownCount = Number(/const SUBTOPICS_SHOWN = (\d+);/.exec(jsx)[1]);
+  const shell = await shellPromise;
+  const shownCount = Number(/const SUBTOPICS_SHOWN = (\d+);/.exec(shell)[1]);
   assert.ok(shownCount >= 3 && shownCount <= 9, 'a few, not a wall');
-  assert.match(jsx, /const SUBTOPICS_FOLD_MIN = SUBTOPICS_SHOWN \+ \d+;/, 'no "show 1 more"');
-  assert.match(jsx, /entries\.filter\(\(\[id\], index\) => index < SUBTOPICS_SHOWN \|\| selectedTopics\.has\(id\)\)/);
-  assert.match(jsx, /className="gw-more"\s+aria-expanded=\{expanded\}\s+aria-controls=\{gridId\}/);
-  assert.match(jsx, /showMore: n => `Show \$\{n\} more`/);
+  assert.match(shell, /const SUBTOPICS_FOLD_MIN = SUBTOPICS_SHOWN \+ \d+;/, 'no "show 1 more"');
+  assert.match(shell, /entries\.filter\(\(\[id\], index\) => index < SUBTOPICS_SHOWN \|\| selectedTopics\.has\(id\)\)/);
+  assert.match(shell, /className="gw-more"\s+aria-expanded=\{expanded\}\s+aria-controls=\{gridId\}/);
+  assert.match(shell, /showMore: n => `Show \$\{n\} more`/);
 });
 
 
 test('the welcome ends in the feed, and an existing account can sign in from any screen', async () => {
-  const jsx = await jsxPromise;
+  const [jsx, shell] = await Promise.all([jsxPromise, shellPromise]);
   const support = jsx.slice(jsx.indexOf('    support: {'), jsx.indexOf('const SHOWCASE') > jsx.indexOf('    support: {') ? jsx.indexOf('const SHOWCASE') : undefined);
   assert.match(support, /cta: 'Start exploring papers'/);
   assert.doesNotMatch(jsx, /cta: 'Sign in'/, 'the last action opens the feed, not a dialog');
   // Someone onboarded on another device must not answer the welcome again to
   // reach their account: the bar carries Sign in on every screen.
-  const bar = jsx.slice(jsx.indexOf('<header className="gw-bar">'), jsx.indexOf('</header>'));
-  assert.match(bar, /<button type="button" className="gw-sign-in" onClick=\{onSignIn\}>/);
-  assert.match(bar, /Sign in/);
+  const bar = shell.slice(shell.indexOf('<header className="gw-bar">'), shell.indexOf('</header>'));
+  assert.match(bar, /\{barAction\}/, 'the bar draws the action its caller passes');
+  const barAction = jsx.slice(jsx.indexOf('barAction={('), jsx.indexOf(')}', jsx.indexOf('barAction={(')));
+  assert.match(barAction, /<button type="button" className="gw-sign-in" onClick=\{onSignIn\}>/);
+  assert.match(barAction, /Sign in/);
   // The page leaves, and only then hands its answer over.
-  assert.match(jsx, /animate=\{leaving && !still \? \{ opacity: 0, y: -16 \} : \{ opacity: 1, y: 0 \}\}/);
-  assert.match(jsx, /onAnimationComplete=\{\(\) => \{\s*if \(leaving && !still\) onComplete\?\.\(answer\(\)\);/);
+  assert.match(shell, /animate=\{leaving && !still \? \{ opacity: 0, y: -16 \} : \{ opacity: 1, y: 0 \}\}/);
+  assert.match(shell, /onAnimationComplete=\{\(\) => \{\s*if \(leaving && !still\) onLeaveComplete\?\.\(\);/);
+  assert.match(jsx, /onLeaveComplete=\{\(\) => onComplete\?\.\(answer\(\)\)\}/);
 });

@@ -32,6 +32,7 @@ import {
   getSearchSectionOrder,
   resolvePreferredSearchSection,
 } from '../../utils/searchRelevance';
+import Handle from '../Profile/Handle.jsx';
 import './SearchCommand.css';
 import { Toggle } from '../ui/toggle.jsx';
 
@@ -236,7 +237,7 @@ export default function SearchCommand({ open, onOpenChange, finalFocus }) {
     >
       <span className="sc-avatar" aria-hidden="true">{initialOf(person.name, person.handle)}</span>
       <span className="sc-label">{person.name || person.handle}</span>
-      <span className="sc-meta sc-meta--handle">@{person.handle}</span>
+      <Handle className="sc-meta sc-meta--handle" handle={person.handle} />
     </CommandItem>
   );
 

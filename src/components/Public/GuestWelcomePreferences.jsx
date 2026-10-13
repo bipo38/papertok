@@ -185,7 +185,7 @@ const CARD_SETTLE = 0.85;
 // Subscription chip, a library card slides in over its corner, and the chip
 // turns into "Via your library". Plays once and is still by two seconds
 // (WCAG 2.2.2); with motion refused it is drawn opened, the card in place.
-function LibraryPreview({ still }) {
+export function LibraryPreview({ still }) {
   const field = CATEGORIES[LIBRARY_PAPER.field];
   const [opened, setOpened] = useState(still);
   return <div className="gw-library-preview" aria-hidden="true">

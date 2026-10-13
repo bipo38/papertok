@@ -110,14 +110,27 @@ export const GUEST_SEED_MAX = 100;
  * the whole seed stops at the rules' cap, so even a visitor who ticked every
  * topic of every area gets a profile the rules accept.
  */
-export function guestSeedCategoriesForAreas(areas, perArea = GUEST_SEED_PER_AREA, topics = []) {
+function guestSeedLists(areas, perArea, topics) {
   const chosen = normalizeGuestAreas(areas);
   const narrowed = new Set(normalizeGuestTopics(topics, chosen));
-  const lists = chosen.map((key) => {
+  return chosen.map((key) => {
     const all = Object.keys(CATEGORIES[key].subcategories);
     const picked = all.filter(id => narrowed.has(id));
     return picked.length > 0 ? picked : all.slice(0, perArea);
   });
+}
+
+/**
+ * How many categories the same answer stands for BEFORE the cap: what the
+ * onboarding shows the reader so they can drop topics themselves, rather than
+ * have `guestSeedCategoriesForAreas` drop them without a word.
+ */
+export function guestSeedSizeForAreas(areas, perArea = GUEST_SEED_PER_AREA, topics = []) {
+  return guestSeedLists(areas, perArea, topics).reduce((count, list) => count + list.length, 0);
+}
+
+export function guestSeedCategoriesForAreas(areas, perArea = GUEST_SEED_PER_AREA, topics = []) {
+  const lists = guestSeedLists(areas, perArea, topics);
   const picked = [];
   for (let index = 0; ; index += 1) {
     let added = false;

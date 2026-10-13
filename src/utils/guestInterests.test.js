@@ -9,6 +9,7 @@ import {
   dismissGuestInterests,
   guestCategoriesForAreas,
   guestSeedCategoriesForAreas,
+  guestSeedSizeForAreas,
   normalizeGuestAreas,
   normalizeGuestTopics,
   readGuestInterests,
@@ -198,4 +199,16 @@ test('the university address travels only while it parses as one, lowercased', (
   assert.equal('institutionEmail' in readGuestInterests(storage), false);
   clearGuestInterests(storage);
   assert.equal(readGuestInterests(storage), null);
+});
+
+test('the seed size counts what the answer stands for before the cap', () => {
+  // Two whole areas: five each. One area narrowed to three topics: three.
+  assert.equal(guestSeedSizeForAreas(['physics', 'cs']), 10);
+  assert.equal(guestSeedSizeForAreas(['physics', 'cs'], 5, ['cs.LG', 'cs.CL', 'cs.CV']), 8);
+  // Every topic of every area is more than the cap allows, and the size says
+  // so where the capped seed would quietly stop at the cap.
+  const everything = Object.entries(CATEGORIES).flatMap(([, area]) => Object.keys(area.subcategories));
+  const allAreas = Object.keys(CATEGORIES);
+  assert.ok(guestSeedSizeForAreas(allAreas, 5, everything) > GUEST_SEED_MAX);
+  assert.equal(guestSeedCategoriesForAreas(allAreas, 5, everything).length, GUEST_SEED_MAX);
 });

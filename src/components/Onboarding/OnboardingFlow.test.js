@@ -2,17 +2,159 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('SOURCE: first-run onboarding asks for a profile after interests, private by default', async () => {
+test('SOURCE: first-run onboarding opens on a greeting, asks about the profile, then its handle, and the university comes last', async () => {
   const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   assert.match(code, /createUserProfile/);
-  assert.match(code, /<VisibilityList/);
+  assert.match(code, /VisibilityChoice/);
   assert.match(code, /PROFILE_VISIBILITY\.public/);
-  assert.match(code, /PROFILE_VISIBILITY\.private/);
+  // A private choice is any answer but public: asksPage below leaves it the
+  // greeting, the profile question and the university.
   assert.match(code, /onboardingComplete/);
-  assert.match(code, /Who can see your profile\?/);
-  assert.match(code, /useState\(PROFILE_VISIBILITY\.private\)/, 'Private is the default');
-  assert.match(code, /const steps = existingProfile \? STEPS\.slice\(0, 1\) : STEPS;/);
+  assert.match(code, /Do you want a public profile\?/);
+  // One screen per question, in this order. The pickers only without a
+  // guest answer, the profile only without an existing profile, the handle
+  // and about screens only after a public choice; the greeting first, the
+  // university last.
+  const list = code.match(/function onboardingSteps\(\{ asksTopics, asksProfile, asksPage \}\) \{[\s\S]*?\n\}/);
+  assert.ok(list, 'the step list is gone or reshaped');
+  assert.match(
+    list[0],
+    /return \[\s*'welcome',\s*\.\.\.\(asksTopics \? \['topics', 'subtopics'\] : \[\]\),\s*\.\.\.\(asksProfile \? \['profile'\] : \[\]\),\s*\.\.\.\(asksPage \? \['handle', 'about'\] : \[\]\),\s*'university',\s*\];/,
+  );
+  // The lists that come out of it, stated independently.
+  const onboardingSteps = new Function(`${list[0]}; return onboardingSteps;`)();
+  assert.deepEqual(onboardingSteps({ asksTopics: false, asksProfile: true, asksPage: false }), ['welcome', 'profile', 'university']);
+  assert.deepEqual(onboardingSteps({ asksTopics: false, asksProfile: true, asksPage: true }), ['welcome', 'profile', 'handle', 'about', 'university']);
+  assert.deepEqual(onboardingSteps({ asksTopics: true, asksProfile: true, asksPage: true }), ['welcome', 'topics', 'subtopics', 'profile', 'handle', 'about', 'university']);
+  assert.deepEqual(onboardingSteps({ asksTopics: false, asksProfile: false, asksPage: false }), ['welcome', 'university']);
+  assert.match(code, /const asksTopics = !guestSeed;/, 'a guest answer never sees the pickers, not even through Back');
+  assert.match(code, /const asksPage = !existingProfile && visibilityDraft === PROFILE_VISIBILITY\.public;/, 'a private choice has no page for a handle, photo or bio');
+  assert.match(code, /const steps = onboardingSteps\(\{ asksTopics, asksProfile: !existingProfile, asksPage \}\);/);
+  assert.match(code, /const \[stepState, setStep\] = useState\(0\);/, 'every account starts on the greeting');
+  // The dots are the list the reader will see.
+  assert.match(code, /dots=\{\{ count: steps\.length, index: stepIndex,/);
+  // The last screen of either list is the one that finishes.
+  assert.match(code, /const isLast = stepIndex === steps\.length - 1;/);
+  assert.match(code, /if \(isLast\) void handleFinish\(\);\s*else goTo\(stepIndex \+ 1\);/);
+  assert.match(code, /university: \{[\s\S]*?cta: 'Start exploring',/);
+});
+
+test('SOURCE: the onboarding is drawn in the welcome\'s shell, with the welcome\'s pickers', async () => {
+  const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /import \{ AreaPicker, SubtopicsPicker, WelcomeCopy, WelcomeShell \} from '\.\.\/Public\/WelcomeShell\.jsx';/);
+  assert.equal((code.match(/<WelcomeShell\b/g) || []).length, 1);
+  assert.match(code, /<AreaPicker\b/);
+  assert.match(code, /<SubtopicsPicker\b/);
+  // No cards, heading or landmark of its own: the shell draws those.
+  assert.doesNotMatch(code, /<Toggle\b|<h1\b|<main\b|area-card|subcat-chip|InterestsReceipt/);
+});
+
+test('SOURCE: the greeting writes its title glyph by glyph once, and draws it whole when motion is refused', async () => {
+  const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /kicker: firstName => \(firstName \? `Hello, \$\{firstName\}` : 'Hello'\)/);
+  assert.match(code, /title: 'Welcome to PaperTok',/);
+  // No step count: the list grows with the visibility choice made later, and
+  // a number promised here would be wrong by the next screen.
+  assert.match(code, /lede: 'Your feed is ready to be yours\. A few short steps and you are in\.',/);
+  assert.doesNotMatch(code, /COUNT_WORDS|lede\(steps\.length/);
+  assert.match(code, /cta: 'Let’s go',/);
+  // The heading's name is the hidden text; the drawing is hidden from it.
+  assert.match(code, /<span className="sr-only">\{COPY\.welcome\.title\}<\/span>\s*<ScriptTitle still=\{still\} \/>/);
+  assert.match(code, /const still = Boolean\(useReducedMotion\(\)\);/);
+  const title = code.match(/function ScriptTitle\(\{ still \}\) \{[\s\S]*?\n\}/);
+  assert.ok(title, 'ScriptTitle is gone or reshaped');
+  assert.match(title[0], /<span className="onboarding-script" aria-hidden="true">/);
+  assert.match(title[0], /<svg className="onboarding-script-svg" viewBox=\{WELCOME_TITLE\.viewBox\}/);
+  // No pen, nothing measured at runtime: the timing is baked.
+  assert.doesNotMatch(code, /PenNib|onboarding-script-pen|getTotalLength|useLayoutEffect/);
+  const css = await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /onboarding-script-pen/);
+  // Each glyph is ink under its own mask, one id per glyph; motion refused,
+  // there are no masks and the paths are simply filled.
+  assert.match(title[0], /\{!still && \(\s*<defs>/);
+  assert.match(title[0], /id=\{`welcome-title-mask-\$\{index\}`\}/);
+  assert.match(title[0], /fill=\{`url\(#welcome-title-ink-\$\{index\}\)`\}/);
+  assert.match(title[0], /<path\s+key=\{index\}\s+d=\{glyph\.d\}\s+fill="currentColor"\s+mask=\{still \? undefined : `url\(#welcome-title-mask-\$\{index\}\)`\}/);
+  assert.doesNotMatch(title[0], /stroke/);
+  assert.match(title[0], /initial=\{\{ attrX: left - width \}\}\s*animate=\{\{ attrX: left \}\}/);
+  assert.match(title[0], /className="onboarding-script-rule"\s*initial=\{still \? false : \{ scaleX: 0 \}\}/);
+});
+
+test('the greeting settles inside three seconds under the baked glyph data', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  const constant = name => Number(code.match(new RegExp(`const ${name} = ([\\d.]+);`))[1]);
+  const { default: data } = await import('./welcomeTitlePaths.js');
+  assert.equal(data.glyphs.length, 17);
+  assert.equal(data.slant, 22, 'the lean the sweeps were measured across travels with them');
+  assert.match(code, /const SLANT_DEGREES = WELCOME_TITLE\.slant;/, 'the component leans its bands the way the data was measured');
+  for (const glyph of data.glyphs) {
+    assert.ok(glyph.length > 0, `${glyph.char} has a baked length`);
+    assert.ok(glyph.box.length === 2 && glyph.box[0] < glyph.box[1], `${glyph.char} has a baked box`);
+    assert.ok(glyph.sweep.length === 2 && glyph.sweep[0] < glyph.sweep[1], `${glyph.char} has a baked sweep`);
+  }
+  // The schedule stated independently: durations share WRITE_SECONDS by ink
+  // (capitals weigh more), each glyph joins the last at JOIN_AT, words pause.
+  const weights = data.glyphs.map(glyph => glyph.length * (/[A-Z]/.test(glyph.char) ? constant('CAPITAL_WEIGHT') : 1));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let start = constant('WRITE_START');
+  let end = 0;
+  data.glyphs.forEach((glyph, index) => {
+    const duration = (weights[index] / total) * constant('WRITE_SECONDS');
+    if (index > 0) start += (glyph.afterSpace ? constant('WORD_GAP') : 0);
+    end = Math.max(end, start + duration);
+    start += duration * constant('JOIN_AT');
+  });
+  const settled = end + constant('RULE_GAP') + constant('RULE_SECONDS');
+  assert.ok(settled <= 3, `the greeting settles at ${settled.toFixed(2)} s`);
+});
+
+test('SOURCE: the title is baked outlines from a checked-in generator, and no script face loads at runtime', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /^import WELCOME_TITLE from '\.\/welcomeTitlePaths\.js';$/m);
+  assert.doesNotMatch(code, /@fontsource\/pinyon-script/);
+  const pkg = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
+  assert.equal(pkg.scripts['build:welcome-title'], 'node scripts/build-welcome-title.mjs');
+  assert.ok(pkg.devDependencies['@fontsource/pinyon-script'] && pkg.devDependencies['opentype.js']);
+  assert.ok(!pkg.dependencies['@fontsource/pinyon-script'], 'the face is a build input, not a runtime dependency');
+  await readFile(new URL('../../../scripts/build-welcome-title.mjs', import.meta.url), 'utf8');
+  const { default: data } = await import('./welcomeTitlePaths.js');
+  assert.equal(data.text, 'Welcome to PaperTok');
+  assert.match(code, /title: 'Welcome to PaperTok',/, 'the hidden text says what the drawing shows');
+  // One outline per visible character, in writing order.
+  assert.deepEqual(data.glyphs.map(glyph => glyph.char).join(''), 'WelcometoPaperTok');
+  assert.equal(data.viewBox.split(' ').length, 4);
+  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i, 'tokens only');
+});
+
+test('SOURCE: the about screen is skippable, and its bio and photo reach the public profile', async () => {
+  const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /skip=\{step === 'about'\s*\? \{ onClick: \(\) => \{ setBio\(''\); setPhoto\(null\); goTo\(stepIndex \+ 1\); \}, label: COPY\.about\.skip \}/, 'skipping drops what was entered, so nothing is published unasked');
+  assert.match(code, /skip: 'Skip for now',/);
+  assert.equal((code.match(/skip: 'Skip for now',/g) || []).length, 2, 'about and university say it the same way');
+  assert.match(code, /<Textarea\s+id="onboarding-bio"[\s\S]*?maxLength=\{USER_PROFILE_LIMITS\.bio\}\s*aria-describedby="onboarding-bio-count"/);
+  // The photo is the shared picker, which prepares both copies with the crop:
+  // the onboarding keeps no file input or preparation of its own.
+  assert.match(code, /^import \{ AvatarPicker \} from '\.\.\/Profile\/AvatarPicker\.jsx';$/m);
+  assert.match(code, /<AvatarPicker\s+value=\{photo\}\s+fallbackSrc=\{showAccountPhoto \? accountPhoto : ''\}[\s\S]*?onChange=\{setPhoto\}\s*\/>/);
+  assert.doesNotMatch(code, /type="file"|prepareProfileImage|photoInputRef|preparingPhoto/);
+  const create = code.match(/await createUserProfile\(\{[\s\S]*?\}\);/);
+  assert.match(create[0], /\bbio,/);
+  assert.match(create[0], /photo: publicPhoto,/);
+  assert.match(create[0], /showPhoto: Boolean\(publicPhoto\),/, 'a hidden photo is stored as a choice, not mistaken for none');
+  assert.match(code, /if \(asksPage && photo\) await updateProfilePhoto\(photo\.account\);/, 'the navbar avatar matches');
+  // The account photo is published only with the editor's switch left on.
+  assert.match(code, /const publicPhoto = photo\?\.public \|\| \(showAccountPhoto \? accountPhoto : ''\);/);
+  assert.match(code, /\{accountPhoto && !photo && \([\s\S]*?\{COPY\.about\.showPhoto\}[\s\S]*?<Switch checked=\{showAccountPhoto\} onCheckedChange=\{setShowAccountPhoto\} \/>/);
+  assert.match(code, /showPhoto: 'Show my account photo',\s*showPhotoHint: 'Off: your page shows your initial instead of the picture\.',/);
+
 });
 
 test('SOURCE: there is no sign-in page; a guest off a protected route gets the feed with the door open', async () => {
@@ -79,22 +221,50 @@ test('SOURCE: a retry after a failed completeOnboarding does not claim the handl
  * account that was already onboarded must discard a stray answer rather than
  * leave it waiting for the next new account on the same device.
  */
-test('SOURCE: the onboarding opens on the profile step, seeded from the guest answer', async () => {
+test('SOURCE: the onboarding is seeded from the guest answer', async () => {
   const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-  assert.match(code, /readGuestInterests\(\)/);
-  // The guest already answered the interests question; the only step left
-  // for them is the profile. The stepper still reaches the interests.
-  assert.match(code, /useState\(guestSeed \? 2 : 1\)/, 'a guest with an answer skips straight to the profile step');
-  // A bounded seed per area, not every category of the area: the feed's
-  // window is five wide and its exploration needs siblings left over.
-  // An area the welcome narrowed seeds exactly those topics instead.
-  assert.match(code, /new Set\(guestSeedCategoriesForAreas\(guestSeed \?\? \[\], GUEST_SEED_PER_AREA, guestSeedTopics\)\)/, 'the seed is the bounded per-area pick, topics included');
-  assert.match(code, /const \[guestSeedTopics\] = useState\(\(\) => readGuestInterests\(\)\?\.topics \?\? \[\]\);/);
+  // Read once, in one place.
+  assert.match(code, /const \[guestAnswer\] = useState\(\(\) => readGuestInterests\(\)\);/);
+  assert.equal((code.match(/readGuestInterests\(/g) || []).length, 1);
+  assert.match(code, /new Set\(guestSeed \?\? \[\]\)/, 'the areas are pre-selected');
+  assert.match(code, /new Set\(guestAnswer\?\.topics \?\? \[\]\)/, 'and so are the topics');
+  // One rule for both flows: an area narrowed to topics stands for those, an
+  // area left whole for its first few (bounded, so the feed has siblings
+  // left to explore).
+  assert.match(
+    code,
+    /guestSeedCategoriesForAreas\(Array\.from\(selectedAreas\), GUEST_SEED_PER_AREA, Array\.from\(selectedTopics\)\)/,
+    'the preferences are the welcome\'s rule applied to what is ticked',
+  );
+  assert.match(code, /await completeOnboarding\(preferences\);/, 'and that is what is written');
   assert.doesNotMatch(code, /guestCategoriesForAreas\(/, 'the full union belongs to the guest feed plan, not to the onboarding');
-  // `completeOnboarding` is the only write, so what the summary shows is
-  // what the profile gets.
   assert.doesNotMatch(code, /saveGuestInterests|clearGuestInterests/, 'the onboarding reads the answer; AuthContext owns its end');
+});
+
+test('SOURCE: the university address from the welcome reaches the link on the last screen', async () => {
+  const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /const \[guestInstitutionEmail, setGuestInstitutionEmail\] = useState\(\(\) => guestAnswer\?\.institutionEmail \?\? ''\);/);
+  // InstitutionLink links the address on mount: leaving the screen drops it,
+  // so an Unlink is not undone by coming back.
+  assert.match(code, /if \(step === 'university'\) setGuestInstitutionEmail\(''\);/);
+  const bounce = code.match(/if \(err instanceof HandleUnavailableError\) \{[\s\S]*?\n {6}\}/);
+  assert.ok(bounce);
+  assert.match(bounce[0], /setStep\(steps\.indexOf\('handle'\)\);\s*setGuestInstitutionEmail\(''\);/, 'a taken handle goes back to the handle screen');
+  assert.match(bounce[0], /setProfileError\(COPY\.handle\.handleTaken\);/);
+  // The field starts with the welcome's address; the arrival link reads only
+  // the first-visit copy, which leaving the screen clears.
+  assert.match(code, /const \[institutionEmail, setInstitutionEmail\] = useState\(\(\) => guestAnswer\?\.institutionEmail \?\? ''\);/);
+  assert.match(
+    code,
+    /\{step === 'university' && \([\s\S]*?<InstitutionLink\s+idPrefix="onboarding-institution"\s+defaultEmail=\{guestInstitutionEmail\}\s+formId=\{UNIVERSITY_FORM_ID\}\s+showSubmit=\{false\}\s+email=\{institutionEmail\}\s+onEmailChange=\{setInstitutionEmail\}\s+onBusyChange=\{setLinkBusy\}\s+linkedNote=\{COPY\.university\.linkedNote\}\s*\/>/,
+    'the link is the university screen\'s, with the address already in it and no button of its own',
+  );
+  assert.match(code, /linkedNote: 'You can unlink any time in Settings\.',/);
+  // The way round the link is there until one is made, whatever is typed.
+  assert.match(code, /: step === 'university' && !institution && !linkBusy\s*\? \{ onClick: \(\) => \{ if \(!saving\) void handleFinish\(\); \}, label: COPY\.university\.skip \}/);
+  assert.equal((code.match(/<InstitutionLink\b/g) || []).length, 1);
 });
 
 test('SOURCE: the guest answer is cleared where the profile takes over', async () => {
@@ -150,42 +320,157 @@ test('SOURCE: the profile fields are the shared Input under a Label, with their 
   const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   assert.match(code, /import \{ Input \} from '\.\.\/ui\/input\.jsx'/);
   assert.match(code, /import \{ Label \} from '\.\.\/ui\/label\.jsx'/);
+  assert.doesNotMatch(code, /<input\b/, 'a bare <input> came back');
   assert.match(code, /<Label htmlFor="onboarding-handle">/);
-  assert.match(code, /<Input\s+id="onboarding-handle"[\s\S]*?aria-invalid=\{isPublic && \(Boolean\(handleError\) \|\| showHandleRequired\) \? 'true' : undefined\}\s*aria-describedby="onboarding-handle-hint"/);
+  assert.match(code, /<Input\s+id="onboarding-handle"[\s\S]*?aria-invalid=\{handleInvalid\}\s*aria-describedby="onboarding-handle-hint"/);
+  // A taken handle is the field's error too, not only an alert under the screen.
+  assert.match(code, /const handleTaken = step === 'handle' && profileError === COPY\.handle\.handleTaken;/);
+  assert.match(code, /const handleInvalid = handleTaken \|\| \(Boolean\(handleDraft\) && Boolean\(handleError\)\);/);
+  assert.match(code, /\{handleTaken\s*\? COPY\.handle\.handleTaken/);
+  // The fields live on the handle screen, and only there.
+  const handleScreen = code.match(/\{step === 'handle' && \([\s\S]*?\n {6}\)\}/);
+  assert.ok(handleScreen, 'the handle screen is gone or reshaped');
+  assert.match(handleScreen[0], /id="onboarding-handle"/);
+  assert.match(handleScreen[0], /id="onboarding-display-name"/);
+  const profileScreen = code.match(/\{step === 'profile' && \([\s\S]*?\n {6}\)\}/);
+  assert.ok(profileScreen, 'the profile screen is gone or reshaped');
+  assert.doesNotMatch(profileScreen[0], /<Input\b|<Label\b/, 'the profile screen asks the one question');
+  assert.match(profileScreen[0], /<VisibilityChoice\b/);
   assert.match(code, /<Label htmlFor="onboarding-display-name">/);
-  assert.match(code, /<Input\s+id="onboarding-display-name"[\s\S]*?aria-describedby="onboarding-display-name-hint"/);
+  assert.match(code, /<Input\s+id="onboarding-display-name"/);
 });
 
-test('SOURCE: area cards open their categories, which are real checkboxes', async () => {
-  const source = await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8');
-  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
-  // The card opens a popover (a bottom sheet on phones); its pressed look
-  // comes from data-pressed, set while the area has picks.
-  assert.match(code, /<PopoverTrigger className="area-card ob-sheet-card" data-pressed=\{pressed\}/);
-  assert.match(code, /<DrawerContent className="ob-bottom"/);
-  assert.match(code, /<fieldset className="ob-checklist">\s*<legend className="visually-hidden">/);
-  assert.match(code, /<label key=\{id\} className="ob-check-row">\s*<input type="checkbox" checked=\{picked\.has\(id\)\} onChange=\{\(\) => togglePick\(id\)\} \/>/);
-  // "Select all" per area is an action, not a state: a plain button.
-  assert.match(code, /<button type="button" className="ob-text-button" onClick=\{\(\) => toggleAll\(row\)\}>/);
-  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(css, /\.area-card\[data-pressed\]\s*\{/);
-  assert.doesNotMatch(css, /\.is-selected/);
+test('SOURCE: each screen holds its primary until its own question is answered', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  const disabled = code.match(/const primaryDisabled = [\s\S]*?;\n/);
+  assert.ok(disabled, 'primaryDisabled is gone or reshaped');
+  assert.match(disabled[0], /\(step === 'profile' && !visibilityDraft\)/, 'the profile screen needs only a choice');
+  assert.match(disabled[0], /\(step === 'handle' && !\(handleCheck\.valid && resolvedDisplayName\)\)/, 'the handle screen needs a valid handle and a name');
+  assert.doesNotMatch(code, /profileAnswered/);
+  assert.match(code, /handle: \{\s*kicker: 'Your address',\s*title: 'Pick your handle',/);
 });
 
-const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+test('SOURCE: on the university screen a typed address makes the primary the link\'s submit', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /const linksOnPress = step === 'university' && !institution && institutionEmail\.trim\(\) !== '';/);
+  const primary = code.match(/primary=\{linksOnPress && !saving\s*\? \{[\s\S]*?\}\s*: \{[\s\S]*?\n {8}\}\}/);
+  assert.ok(primary, 'the primary no longer depends on the typed address');
+  // Bound to the form: no click handler of its own, so the press is the
+  // form's submit and Google's window opens from it.
+  const bound = primary[0].match(/\? \{([\s\S]*?)\}\s*:/)[1];
+  assert.match(bound, /form: UNIVERSITY_FORM_ID,/);
+  assert.match(bound, /label: linkBusy \? COPY\.university\.verifying : COPY\.university\.link,/);
+  assert.match(bound, /busy: linkBusy,/, 'busy keeps it focusable while Google is open');
+  assert.doesNotMatch(bound, /onClick/);
+  assert.match(code, /link: 'Continue',\s*verifying: 'Verifying…',/);
+  // With no address, or once linked, it is the screen's own: Start exploring.
+  assert.match(primary[0], /label: saving \? COPY\.saving : stepCopy\.cta,/);
+  assert.match(code, /<LibraryPreview still=\{still\} \/>/);
+  assert.match(code, /import \{ LibraryPreview \} from '\.\.\/Public\/GuestWelcomePreferences\.jsx';/);
 
-test('SOURCE: moving between steps puts focus on the new step heading', async () => {
-  const code = stripComments(await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'));
-  // The button that moved the reader unmounts with its step; without this,
-  // focus falls to the page and the new step is never announced.
-  assert.match(code, /if \(direction\) stepHeadingRef\.current\?\.focus\(\{ preventScroll: true \}\);/);
-  assert.equal((code.match(/<h1 className="onboarding-title" ref=\{stepHeadingRef\} tabIndex=\{-1\}>/g) ?? []).length, 2);
+  const shell = (await readFile(new URL('../Public/WelcomeShell.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(shell, /type=\{primary\.form \? 'submit' : 'button'\}\s*form=\{primary\.form\}\s*onClick=\{primary\.form \? undefined : primary\.onClick\}/);
 });
 
-test('SOURCE: choosing who can see the profile never raises a required error', async () => {
-  const code = stripComments(await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'));
-  const change = code.match(/onChange=\{next => \{\s*setVisibilityDraft\(next\);[\s\S]*?\}\}/);
-  assert.ok(change, 'the visibility list lost its change handler');
-  assert.match(change[0], /setHandleTouched\(false\)/);
-  assert.match(change[0], /setFinishTried\(false\)/);
+const screenBlock = (code, screen) => code.match(new RegExp(`\\{step === '${screen}' && \\([\\s\\S]*?\\n {6}\\)\\}`))?.[0];
+
+test('SOURCE: the onboarding CSS draws on white ground, with no tint behind its content', async () => {
+  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /color-mix/);
+  assert.doesNotMatch(css, /--area-accent/);
+  assert.doesNotMatch(css, /--shadow-/, 'the props keep the welcome\'s own elevation');
+  assert.doesNotMatch(css, /border-radius:\s*\d/, 'radius tokens only');
+  // The yellow is the greeting's rule, and nothing else here.
+  assert.equal((css.match(/--brand-yellow/g) || []).length, 1);
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.doesNotMatch(code, /--area-accent|onboarding-stage|onboarding-plate|PagePreview/);
+});
+
+test('SOURCE: the handle screen shows the address it makes, live, in the welcome\'s browser window', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /^import Handle from '\.\.\/Profile\/Handle\.jsx';$/m);
+  const block = screenBlock(code, 'handle');
+  assert.ok(block, 'the handle screen is gone or reshaped');
+  assert.match(block, /<AddressWindow handle=\{handleDraft\} valid=\{handleCheck\.valid && !handleTaken\} still=\{still\} \/>/);
+  const window = code.match(/function AddressWindow\(\{ handle, valid, still \}\) \{[\s\S]*?\n\}/);
+  assert.ok(window, 'AddressWindow is gone or reshaped');
+  assert.match(window[0], /className="gw-gh onboarding-window"\s+aria-hidden="true"/, 'the welcome\'s window, as decoration');
+  assert.match(window[0], /<span className="gw-gh-dots">/);
+  assert.match(window[0], /<span className="gw-gh-url">\s*<LockSimple /);
+  // The address is the draft, re-keyed so each change dips; ink once valid.
+  assert.match(window[0], /data-valid=\{valid \? '' : undefined\}/);
+  assert.match(window[0], /key=\{handle\}\s+initial=\{still \? false : \{ opacity: 0\.35 \}\}/);
+  assert.match(window[0], /papertok\.app\/<Handle handle=\{handle \|\| 'yourhandle'\} \/>/);
+  // The cursor lands with the library card's spring; motion refused, every
+  // part is drawn final.
+  assert.match(window[0], /className="gw-gh-cursor onboarding-window-cursor"\s+initial=\{still \? false :/);
+  assert.match(window[0], /\.\.\.LANDING, delay: CARD_AT/);
+  assert.match(code, /const LANDING = \{ type: 'spring', duration: CARD_SETTLE, bounce: 0\.24 \};/);
+  assert.equal((window[0].match(/initial=\{still \? false :/g) || []).length, 3);
+  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.onboarding-window-address \{[^}]*color: var\(--text-tertiary\);[^}]*transition: color 200ms/);
+  assert.match(css, /\.onboarding-window-address\[data-valid\] \{\s*color: var\(--text-primary\);/);
+});
+
+test('SOURCE: the handle field paints its "@" inside the field, out of the pointer\'s way', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.match(code, /<div className="onboarding-handle-input">\s*<span aria-hidden="true">@<\/span>\s*<Input\s+id="onboarding-handle"/);
+  assert.match(code, /handleLabel: 'Public handle',/);
+  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = css.match(/\.onboarding-handle-input > span \{[^}]*\}/);
+  assert.ok(at, 'the @ overlay rule is gone');
+  assert.match(at[0], /position: absolute;/);
+  assert.match(at[0], /font-family: var\(--font-body\);/);
+  assert.match(at[0], /pointer-events: none;/);
+  assert.match(css, /\.onboarding-handle-input > input \{[^}]*padding-left:/, 'the typed handle starts after the sign');
+});
+
+test('SOURCE: the about screen is the photo, the name, and a labelled bio with its count', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  const block = screenBlock(code, 'about');
+  assert.ok(block, 'the about screen is gone or reshaped');
+  assert.match(block, /<AvatarPicker[\s\S]*?size=\{120\}/);
+  // The photo lands with the spring, settling from -6 degrees.
+  assert.match(block, /initial=\{still \? false : \{ opacity: 0, transform: 'translateY\(16px\) rotate\(-6deg\)' \}\}/);
+  assert.match(block, /animate=\{\{ opacity: 1, transform: 'translateY\(0px\) rotate\(0deg\)' \}\}/);
+  assert.match(block, /<p className="onboarding-about-name">\{resolvedDisplayName\}<\/p>/);
+  assert.match(block, /\{accountPhoto && !photo && \(\s*<Label className="onboarding-switch">/);
+  // A visible label, and the count beside it describing the field.
+  assert.match(block, /<Label htmlFor="onboarding-bio">\{COPY\.about\.bio\}<\/Label>\s*<span id="onboarding-bio-count" className="onboarding-bio-count">\s*\{bio\.length\} \/ \{USER_PROFILE_LIMITS\.bio\}/);
+  assert.match(block, /<Textarea\s+id="onboarding-bio"\s+value=\{bio\}\s+rows=\{3\}/);
+  assert.doesNotMatch(block, /email/, 'the avatar\'s initial is the name\'s, never the email\'s: the page is public');
+});
+
+test('SOURCE: the university screen is the welcome\'s, and its platforms stagger only with motion allowed', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  const block = screenBlock(code, 'university');
+  assert.ok(block, 'the university screen is gone or reshaped');
+  assert.match(block, /className="gw-preferences gw-university onboarding-university"/);
+  assert.match(block, /<LibraryPreview still=\{still\} \/>\s*<InstitutionLink/);
+  assert.match(block, /showSubmit=\{false\}/);
+  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.onboarding-university \.institution-services-list > li:nth-child\(2\) \{ animation-delay: 50ms; \}/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.onboarding-university \.institution-services-list > li[\s\S]*animation: none;/);
+});
+
+test('SOURCE: the profile screen is the visibility choice alone, on white', async () => {
+  const code = (await readFile(new URL('./OnboardingFlow.jsx', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  const block = screenBlock(code, 'profile');
+  assert.match(block, /^\{step === 'profile' && \(\s*<div className="gw-preferences onboarding-profile">\s*<VisibilityChoice\b[\s\S]*?\/>\s*<\/div>\s*\)\}$/);
+  const css = (await readFile(new URL('./OnboardingFlow.css', import.meta.url), 'utf8'))
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.gw-step--profile \{\s*width: min\(640px, 100%\);/);
 });
