@@ -134,10 +134,144 @@
   font-weight: var(--fw-semibold);
 }
 
+/* The phone sheet (AccountSheet): the menu's entries at thumb size, at the
+   bottom of the screen. The drawer draws the panel, the handle and the motion. */
+.account-sheet {
+  padding-right: 12px;
+  padding-left: 12px;
+  /* The drawer's own bottom padding plus room above the home indicator. */
+  padding-bottom: calc(var(--inset-bottom) + var(--bleed) + 12px);
+  font-size: 15px;
+}
+
+.account-sheet-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 14px;
+}
+
+.navbar-avatar.account-sheet-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.account-sheet-identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.account-sheet-identity strong {
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+}
+
+.account-sheet-identity span {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-sheet-list {
+  display: grid;
+}
+
+.account-sheet-row {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.account-sheet-row svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.account-sheet-row:active {
+  background: var(--bg-sunken);
+}
+
+.account-sheet-row.is-danger,
+.account-sheet-row.is-danger svg {
+  color: var(--tint-red-fg);
+  font-weight: var(--fw-medium);
+}
+
+.account-sheet-separator {
+  height: 1px;
+  margin: 8px 4px;
+  background: var(--border-default);
+}
+
+.account-sheet-theme {
+  display: grid;
+  gap: 8px;
+  padding: 6px 10px 10px;
+}
+
+.account-sheet-label {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.account-sheet-theme-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+}
+
+.account-sheet-theme-option {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.account-sheet-theme-option[data-checked] {
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 1px var(--border-ink);
+  color: var(--text-primary);
+  font-weight: var(--fw-semibold);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .account-menu,
   .account-menu-theme-pill,
-  .account-menu-theme-option {
+  .account-menu-theme-option,
+  .account-sheet-theme-option {
     transition: none;
   }
 }

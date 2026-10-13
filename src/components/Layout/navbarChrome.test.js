@@ -50,15 +50,33 @@ test('the navbar opens the account menu from the avatar, with no separate prefer
 test('the account menu gathers the account, the three-way theme and sign-out', async () => {
   const jsx = await accountJsx;
   assert.match(jsx, /from '@base-ui\/react\/menu'/);
-  assert.match(jsx, /<Link to="\/profile" \/>/);
-  assert.match(jsx, /<Link to="\/lists" \/>/);
-  assert.match(jsx, /<Link to="\/settings" \/>/);
-  assert.doesNotMatch(jsx, /to="\/settings\//, 'settings is one entry; its pages are inside it');
+  for (const to of ['/profile', '/lists', '/settings']) assert.match(jsx, new RegExp(`to: '${to}'`));
+  assert.doesNotMatch(jsx, /to: '\/settings\//, 'settings is one entry; its pages are inside it');
+  assert.match(jsx, /render=\{<Link to=\{to\} \/>\}/);
   assert.match(jsx, /<Menu\.RadioGroup[\s\S]*?value=\{preference\}[\s\S]*?onValueChange=\{setPreference\}/);
   for (const id of ['light', 'dark', 'system']) assert.match(jsx, new RegExp(`id: '${id}'`));
   assert.match(jsx, /closeOnClick=\{false\}/, 'choosing a theme keeps the menu open');
   assert.match(jsx, /onClick=\{handleSignOut\}/);
   assert.doesNotMatch(jsx, /aria-expanded=/, 'Base UI writes aria-expanded on the trigger');
+});
+
+test('on a phone the avatar opens the same entries as a bottom sheet', async () => {
+  // The menu hung from the top corner with 34 px rows; a phone gets the
+  // shared Drawer instead, with the same links, theme and sign-out.
+  const jsx = await accountJsx;
+  assert.match(jsx, /if \(isPhone\) \{\s*return \(\s*<AccountSheet/);
+  assert.match(jsx, /from '\.\.\/ui\/drawer\.jsx'/);
+  assert.match(jsx, /<DrawerTrigger className="navbar-avatar-btn"/);
+  const sheet = jsx.match(/function AccountSheet[\s\S]*?\n\}/)[0];
+  assert.match(sheet, /LINKS\.map\([\s\S]*?<Link key=\{to\}[^>]*\bto=\{to\} className="account-sheet-row" onClick=\{close\}>/);
+  assert.match(sheet, /<RadioGroup[\s\S]*?value=\{preference\}[\s\S]*?onValueChange=\{setPreference\}/);
+  assert.match(sheet, /onClick=\{onSignOut\}/);
+  assert.doesNotMatch(sheet, /role="menu/, 'a sheet is a dialog, not a menu');
+
+  const css = await accountCss;
+  const px = (rule, prop) => Number(css.match(new RegExp(`\\.${rule} \\{[^}]*${prop}:\\s*(\\d+)px`))?.[1]);
+  assert.ok(px('account-sheet-row', 'min-height') >= 44, 'sheet rows are thumb-sized');
+  assert.ok(px('account-sheet-theme-option', 'min-height') >= 44, 'theme choices are thumb-sized');
 });
 
 test('the account menu animates in and out with CSS, and keeps its items focusable', async () => {

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, GraduationCap, Lock, Minus, SignOut } from '@phosphor-icons/react';
 import { useAuth } from '../../context/AuthContext';
+import useIsPhone from '../../hooks/useIsPhone.js';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAnalyticsConsent } from '../../context/AnalyticsContext';
 import { CATEGORIES } from '../../data/categories';
@@ -40,19 +41,6 @@ const STEPS = [
 const areaAccent = area => ({ '--area-accent': area.gradient });
 
 const plural = (n, one, many) => (n === 1 ? one : many);
-
-
-const PHONE_QUERY = '(max-width: 600px)';
-function useIsPhone() {
-  return useSyncExternalStore(
-    (onChange) => {
-      const query = window.matchMedia(PHONE_QUERY);
-      query.addEventListener('change', onChange);
-      return () => query.removeEventListener('change', onChange);
-    },
-    () => window.matchMedia(PHONE_QUERY).matches,
-  );
-}
 
 
 function ProfilePagePreview({ displayName, handle, visibility, initial }) {

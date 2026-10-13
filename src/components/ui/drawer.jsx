@@ -27,6 +27,11 @@ function Drawer({ side = 'bottom', swipeDirection, ...props }) {
   );
 }
 
+/* Opens the drawer; Base UI gives it aria-expanded and returns focus to it on close. */
+function DrawerTrigger(props) {
+  return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {...props} />;
+}
+
 function DrawerPortal(props) {
   return <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />;
 }
@@ -92,4 +97,5 @@ export {
   DrawerOverlay,
   DrawerPortal,
   DrawerTitle,
+  DrawerTrigger,
 };
