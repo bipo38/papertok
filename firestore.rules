@@ -341,7 +341,7 @@ service cloud.firestore {
       return request.resource.data.keys().hasOnly([
           'handle', 'displayName', 'bio', 'photo', 'orcid', 'verified',
           'allowContact', 'visibility', 'showPinnedLists', 'pinnedLists',
-          'pinnedShareIds',
+          'pinnedShareIds', 'showPhoto',
           'followerCount',
           'institution',
           'createdAt', 'updatedAt'
@@ -372,6 +372,10 @@ service cloud.firestore {
           || validString(request.resource.data.photo, 60000))
         && (!('allowContact' in request.resource.data)
           || request.resource.data.allowContact is bool)
+        // The owner's photo choice: with no photo on the page, "hidden" and
+        // "none to show" are otherwise the same document.
+        && (!('showPhoto' in request.resource.data)
+          || request.resource.data.showPhoto is bool)
         && (!('visibility' in request.resource.data)
           || request.resource.data.visibility in ['public', 'private'])
         // Presentation state, not a disclosure boundary: hiding the pins means

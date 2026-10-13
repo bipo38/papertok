@@ -26,6 +26,7 @@ import {
   needsVisibilityChoice,
   partitionStalePins,
   profileIsPublic,
+  profileShowsPhoto,
   publicAvatarFrom,
   readConfirmedOwnUserProfile,
   readOwnUserProfile,
@@ -153,7 +154,7 @@ export function useProfileEditor() {
   const [allowContact, setAllowContactState] = useState(seededProfile
     ? seededProfile.allowContact === true
     : draft.allowContact);
-  const [showPhoto, setShowPhotoState] = useState(seededProfile ? Boolean(seededProfile.photo) : draft.showPhoto);
+  const [showPhoto, setShowPhotoState] = useState(seededProfile ? profileShowsPhoto(seededProfile) : draft.showPhoto);
   const [visibilityDraft, setVisibilityDraftState] = useState(draft.visibility);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -232,8 +233,7 @@ export function useProfileEditor() {
       setDisplayNameState(pending.displayName ?? (ownProfile?.displayName || user.displayName || ''));
       setBioState(pending.bio ?? (ownProfile?.bio || ''));
       setAllowContactState(ownProfile ? ownProfile.allowContact === true : pending.allowContact);
-      // The toggle reflects reality: public photo = the field exists.
-      setShowPhotoState(ownProfile ? Boolean(ownProfile.photo) : pending.showPhoto);
+      setShowPhotoState(ownProfile ? profileShowsPhoto(ownProfile) : pending.showPhoto);
       setHandleDraftState(pending.handle ?? (ownProfile?.handle || ''));
       if (!ownProfile) setVisibilityDraftState(pending.visibility);
       setStatus(ownProfile ? 'ready' : 'new');
@@ -373,6 +373,7 @@ export function useProfileEditor() {
           bio,
           allowContact,
           photo: showPhoto ? appAvatar : '',
+          showPhoto,
           handle: handleCheck.handle,
           visibility: visibilityDraft,
           institution,
@@ -463,7 +464,7 @@ export function useProfileEditor() {
     setSwitchBusy(true);
     try {
       const updated = await updateUserProfile({
-        ...(isPhoto ? { photo: value ? appAvatar : null } : { allowContact: value }),
+        ...(isPhoto ? { photo: value ? appAvatar : null, showPhoto: value } : { allowContact: value }),
         pinnedLists: livePins(),
       });
       // An unpublish can land while this write is in flight; there is no

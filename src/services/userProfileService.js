@@ -320,6 +320,16 @@ export function isVisibilityChoice(value) {
 }
 
 /** A profile document with no `visibility` predates F8 and is public. */
+/**
+ * Whether the public page shows the account photo. The stored choice wins,
+ * because no photo and a hidden photo look the same on the document; a
+ * profile written before the field existed falls back to whether it has one,
+ * so an old profile without a photo stays without one until its owner says so.
+ */
+export function profileShowsPhoto(profile) {
+  return typeof profile?.showPhoto === 'boolean' ? profile.showPhoto : Boolean(profile?.photo);
+}
+
 export function profileIsPublic(profile) {
   return profile?.visibility !== PROFILE_VISIBILITY.private;
 }
@@ -465,6 +475,7 @@ export async function createUserProfile(input, overrides) {
     handle,
     ...payload,
     ...(institution ? { institution } : {}),
+    showPhoto: input?.showPhoto === true,
     visibility: input.visibility,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -476,7 +487,7 @@ export async function createUserProfile(input, overrides) {
     visibility: input.visibility,
   });
   await commitHandleClaim(batch, handle);
-  return { uid, handle, ...payload, visibility: input.visibility };
+  return { uid, handle, ...payload, showPhoto: input?.showPhoto === true, visibility: input.visibility };
 }
 
 /**
@@ -543,6 +554,7 @@ export async function updateUserProfile(patch, overrides) {
   }
   if (has('bio')) payload.bio = cleanMultilineString(patch.bio, USER_PROFILE_LIMITS.bio);
   if (has('photo')) payload.photo = cleanPhoto(patch.photo);
+  if (has('showPhoto')) payload.showPhoto = patch.showPhoto === true;
   if (has('allowContact')) payload.allowContact = patch.allowContact === true;
   if (has('pinnedLists')) payload.pinnedLists = sanitizePinnedLists(patch.pinnedLists);
   // Read rather than trust the caller: this runs immediately after
@@ -748,8 +760,11 @@ export async function savePublicProfilePhoto(photo, overrides) {
 
   const value = cleanPhoto(photo);
   const batch = api.batch(api.database);
+  // Only called while the photo is shown, so the choice is written with it:
+  // removing the last photo must not read back as a photo hidden on Privacy.
   batch.update(profileReference(api, uid), {
     photo: value || api.deleteValue(),
+    showPhoto: true,
     updatedAt: api.now(),
   });
   await batch.commit();

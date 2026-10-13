@@ -32,6 +32,7 @@ import {
   isVisibilityChoice,
   needsVisibilityChoice,
   profileIsPublic,
+  profileShowsPhoto,
   saveProfileVisibility,
   mergeShowcaseCards,
   migrateHiddenPins,
@@ -259,6 +260,37 @@ test('an emptied bio or photo is deleted, not silently kept', async () => {
   assert.equal(result.bio, '');
   assert.equal(result.photo, '');
   await assert.rejects(() => updateUserProfile({ displayName: '  ' }, api), TypeError);
+});
+
+test('a photo hidden on Privacy and no photo at all read as different states', async () => {
+  // Without the stored choice both are a document with no photo, and an
+  // upload after removing the last photo was kept off the page as "hidden".
+  assert.equal(profileShowsPhoto({ showPhoto: true }), true);
+  assert.equal(profileShowsPhoto({ showPhoto: false, photo: 'x' }), false);
+  // Written before the choice existed: whether it has a photo is all there is.
+  assert.equal(profileShowsPhoto({ photo: 'x' }), true);
+  assert.equal(profileShowsPhoto({}), false);
+
+  const created = fakeApi();
+  await createUserProfile({ handle: 'ada', displayName: 'Ada', visibility: 'public', showPhoto: true }, created.api);
+  assert.equal(created.calls[0][2].showPhoto, true);
+  assert.equal(created.calls[0][2].photo, undefined, 'shown, with no photo to show yet');
+
+  const stored = { handle: 'ada', displayName: 'Ada', photo: 'x', showPhoto: true };
+  const mirrored = fakeApi({
+    getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => stored }),
+  });
+  await savePublicProfilePhoto(null, mirrored.api);
+  const [, , removed] = mirrored.calls.find(([kind]) => kind === 'update');
+  assert.deepEqual(removed, { photo: 'DELETE_FIELD', showPhoto: true, updatedAt: 'SERVER_TIME' });
+
+  const hidden = fakeApi({
+    getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => stored }),
+  });
+  await updateUserProfile({ photo: null, showPhoto: false }, hidden.api);
+  const [, , written] = hidden.calls.find(([kind]) => kind === 'update');
+  assert.equal(written.showPhoto, false);
+  assert.equal(written.photo, 'DELETE_FIELD');
 });
 
 test('an invalid or reserved handle never reaches Firestore', async () => {
@@ -810,13 +842,13 @@ test('an uploaded photo past the public budget is not mirrored', () => {
   assert.equal(publicAvatarFrom(huge, GOOGLE_AVATAR), GOOGLE_AVATAR, 'falls back rather than storing nothing');
 });
 
-test('mirroring the avatar writes one field and only when a profile exists', async () => {
+test('mirroring the avatar writes the photo and that it is shown, only when a profile exists', async () => {
   const { api, calls } = fakeApi({
     getDocument: async () => ({ exists: () => true, id: 'user-1', data: () => ({ handle: 'ada' }) }),
   });
   await savePublicProfilePhoto(GOOGLE_AVATAR, api);
   assert.deepEqual(writtenPaths(calls), ['db/userProfiles/user-1']);
-  assert.deepEqual(Object.keys(calls[0][2]).sort(), ['photo', 'updatedAt']);
+  assert.deepEqual(Object.keys(calls[0][2]).sort(), ['photo', 'showPhoto', 'updatedAt']);
   assert.equal(calls[0][2].photo, GOOGLE_AVATAR);
 });
 
